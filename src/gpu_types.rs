@@ -1,7 +1,10 @@
-use bevy::math::{Vec3, Vec4};
+#![allow(dead_code)]
+
+use bevy::math::{UVec3, UVec4, Vec3, Vec3A, Vec4, bounding::Aabb3d};
+use bevy_app_compute::prelude::ShaderType;
 use bytemuck::{Pod, Zeroable};
 
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Pod, Zeroable, ShaderType)]
 #[repr(C)]
 pub struct GpuVec4 {
     x: f32,
@@ -10,7 +13,6 @@ pub struct GpuVec4 {
     w: f32,
 }
 
-#[allow(dead_code)]
 impl GpuVec4 {
     pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self { x, y, z, w }
@@ -55,13 +57,12 @@ impl From<Vec4> for GpuVec4 {
     }
 }
 
-#[derive(Clone, Copy, Zeroable, Pod)]
+#[derive(Clone, Copy, Zeroable, Pod, ShaderType)]
 #[repr(C)]
 pub struct GpuVec3 {
     inner: GpuVec4,
 }
 
-#[allow(dead_code)]
 impl GpuVec3 {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self {
@@ -95,22 +96,29 @@ impl From<Vec3> for GpuVec3 {
     }
 }
 
+impl From<Vec3A> for GpuVec3 {
+    fn from(value: Vec3A) -> Self {
+        Self {
+            inner: GpuVec4::new(value.x, value.y, value.z, 0.0),
+        }
+    }
+}
+
 impl std::fmt::Debug for GpuVec3 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{ {}, {}, {} }}", self.x(), self.y(), self.z())
     }
 }
 
-#[derive(Clone, Copy, Pod, Zeroable)]
+#[derive(Clone, Copy, Pod, Zeroable, ShaderType)]
 #[repr(C)]
 pub struct GpuUVec4 {
-    pub x: u32,
-    pub y: u32,
-    pub z: u32,
-    pub w: u32,
+    x: u32,
+    y: u32,
+    z: u32,
+    w: u32,
 }
 
-#[allow(dead_code)]
 impl GpuUVec4 {
     pub fn new(x: u32, y: u32, z: u32, w: u32) -> Self {
         Self { x, y, z, w }
@@ -138,6 +146,17 @@ impl GpuUVec4 {
     }
 }
 
+impl From<UVec4> for GpuUVec4 {
+    fn from(value: UVec4) -> Self {
+        Self {
+            x: value.x,
+            y: value.y,
+            z: value.z,
+            w: value.w,
+        }
+    }
+}
+
 impl std::fmt::Debug for GpuUVec4 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{ {}, {}, {}, {} }}", self.x, self.y, self.z, self.w)
@@ -145,13 +164,12 @@ impl std::fmt::Debug for GpuUVec4 {
 }
 
 /// GPU-aligned Vec3 wrapper using GpuU32Vec4 internally
-#[derive(Clone, Copy, Pod, Zeroable)]
+#[derive(Clone, Copy, Pod, Zeroable, ShaderType)]
 #[repr(C)]
 pub struct GpuUVec3 {
     inner: GpuUVec4,
 }
 
-#[allow(dead_code)]
 impl GpuUVec3 {
     pub fn new(x: u32, y: u32, z: u32) -> Self {
         Self {
@@ -177,8 +195,66 @@ impl GpuUVec3 {
     }
 }
 
+impl From<UVec3> for GpuUVec3 {
+    fn from(value: UVec3) -> Self {
+        Self {
+            inner: GpuUVec4::new(value.x, value.y, value.z, 0),
+        }
+    }
+}
+
 impl std::fmt::Debug for GpuUVec3 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{ {}, {}, {} }}", self.x(), self.y(), self.z())
+    }
+}
+
+#[derive(Clone, Copy, Pod, Zeroable, Debug, ShaderType)]
+#[repr(C)]
+pub struct GpuBox3 {
+    min: GpuVec3,
+    max: GpuVec3,
+}
+
+impl GpuBox3 {
+    /// Create a new Box3 from min and max points
+    pub fn new(min: GpuVec3, max: GpuVec3) -> Self {
+        Self { min, max }
+    }
+
+    pub fn min(&self) -> &GpuVec3 {
+        &self.min
+    }
+
+    pub fn max(&self) -> &GpuVec3 {
+        &self.max
+    }
+
+    /// Compute the size/extent of the box (max - min)
+    pub fn size(&self) -> GpuVec3 {
+        GpuVec3::new(
+            self.max.x() - self.min.x(),
+            self.max.y() - self.min.y(),
+            self.max.z() - self.min.z(),
+        )
+    }
+
+    /// Compute the center point of the box
+    pub fn center(&self) -> GpuVec3 {
+        let s = self.size();
+        GpuVec3::new(
+            self.min.x() + s.x() * 0.5,
+            self.min.y() + s.y() * 0.5,
+            self.min.z() + s.z() * 0.5,
+        )
+    }
+}
+
+impl From<Aabb3d> for GpuBox3 {
+    fn from(value: Aabb3d) -> Self {
+        Self {
+            min: value.min.into(),
+            max: value.max.into(),
+        }
     }
 }
