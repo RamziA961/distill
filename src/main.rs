@@ -101,22 +101,8 @@ fn test(
             .collect(),
     };
 
-    let normals = match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
-        Some(bevy::render::mesh::VertexAttributeValues::Float32x3(norms)) => norms
-            .clone()
-            .iter()
-            .map(|s| GpuVec3::from_slice(s))
-            .collect::<Vec<_>>(),
-        _ => panic!("Unexpected format!"),
-    };
-
-    info!(
-        n_verts = verts.len(),
-        n_tris = triangles.len(),
-        n_norms = normals.len()
-    );
+    info!(n_verts = verts.len(), n_tris = triangles.len(),);
 
     worker.write_slice("vertices", &verts);
     worker.write_slice("triangles", &triangles);
-    worker.write_slice("normals", &normals);
 }

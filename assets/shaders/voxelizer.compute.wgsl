@@ -1,5 +1,5 @@
 #import "shaders/distance_fns.wgsl"::closest_point_on_triangle
-#import "shaders/util_fns.wgsl"::{ray_triangle_intersect, calculate_triangle_normal}
+#import "shaders/util_fns.wgsl"::calculate_triangle_normal
 
 struct VoxelUniforms {
     scale: vec3<f32>,
@@ -17,9 +17,6 @@ var<storage> vertices: array<vec3<f32>>;
 var<storage> triangles: array<vec3<u32>>;
 
 @group(0) @binding(3)
-var<storage> normals: array<vec3<f32>>;
-
-@group(0) @binding(4)
 var<uniform> voxel_uniforms: VoxelUniforms;
 
 @compute @workgroup_size(8, 8, 8)
@@ -27,7 +24,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let s = voxel_uniforms.scale;
     let m = voxel_uniforms.minimum;
     let size = voxel_uniforms.size;
-    let n = normals[0];
 
     if (any(id >= vec3<u32>(size, size, size))) {
         return;
@@ -58,28 +54,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         if(dist < unsigned_dist) {
             unsigned_dist = dist;
             closest_pt = curr_closest_pt;
-            //closest_normal = normals[t_i]; //calculate_triangle_normal(a, b, c);
-            closest_normal = normalize(cross(b - a, c - a));
+            closest_normal = calculate_triangle_normal(a, b, c);
         }
     }
     
-    // Ray-based sign determination
-    //var hits: u32 = 0;
-    //for(var i = 0u; i < arrayLength(&triangles); i++) {
-    //    let t = triangles[i];
-
-    //    let a = vertices[t.x];
-    //    let b = vertices[t.y];
-    //    let c = vertices[t.z];
-
-    //    hits = select(
-    //        hits + 1,
-    //        hits,
-    //        ray_triangle_intersect(p_local, vec3<f32>(1.0, 0.0, 0.0), a, b, c)
-    //    );
-    //}
-    // let si = select(-1.0, 1.0, (hits % 2) == 0u);
-
     // Sign determination using closest normal
     // For a point P and its closest point on the surface (closest_p_on_tri) with normal (closest_normal)
     // if dot(P - closest_p_on_tri, closest_normal) > 0, P is outside, else inside.

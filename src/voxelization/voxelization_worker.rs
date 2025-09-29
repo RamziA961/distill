@@ -59,7 +59,6 @@ impl ComputeWorker for VoxelizationWorker {
             )
             .add_empty_rw_storage(VoxelVariables::Vertices.as_ref(), 362 * 16)
             .add_empty_rw_storage(VoxelVariables::Triangles.as_ref(), 720 * 16)
-            .add_empty_rw_storage(VoxelVariables::Normals.as_ref(), 720 * 16)
             .add_uniform(VoxelVariables::VoxelUniforms.as_ref(), &voxel_uniforms)
             .add_pass::<VoxelizationShader>(
                 workgroups,
