@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use bevy::math::{UVec3, UVec4, Vec3, Vec3A, Vec4, bounding::Aabb3d};
+use bevy::{
+    math::{Dir3, UVec3, UVec4, Vec2, Vec3, Vec3A, Vec4, bounding::Aabb3d},
+    transform::components::Transform,
+};
 use bevy_app_compute::prelude::ShaderType;
 use bytemuck::{Pod, Zeroable};
 
@@ -104,9 +107,58 @@ impl From<Vec3A> for GpuVec3 {
     }
 }
 
+impl From<Dir3> for GpuVec3 {
+    fn from(value: Dir3) -> Self {
+        Self {
+            inner: GpuVec4::new(value.x, value.y, value.z, 0.0),
+        }
+    }
+}
+
 impl std::fmt::Debug for GpuVec3 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{ {}, {}, {} }}", self.x(), self.y(), self.z())
+    }
+}
+
+#[derive(Clone, Copy, Zeroable, Pod, ShaderType)]
+#[repr(C)]
+pub struct GpuVec2 {
+    inner: GpuVec4,
+}
+
+impl GpuVec2 {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self {
+            inner: GpuVec4::new(x, y, 0.0, 0.0),
+        }
+    }
+
+    pub fn x(&self) -> f32 {
+        self.inner.x
+    }
+
+    pub fn y(&self) -> f32 {
+        self.inner.y
+    }
+
+    pub fn from_slice(slice: &[f32]) -> Self {
+        assert!(slice.len() >= 2);
+        Self::new(slice[0], slice[1])
+    }
+}
+
+impl From<Vec2> for GpuVec2 {
+    fn from(value: Vec2) -> Self {
+        Self {
+            inner: GpuVec4::new(value.x, value.y, 0.0, 0.0),
+        }
+    }
+}
+
+impl std::fmt::Debug for GpuVec2 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ {}, {} }}", self.x(), self.y())
     }
 }
 
@@ -163,7 +215,7 @@ impl std::fmt::Debug for GpuUVec4 {
     }
 }
 
-/// GPU-aligned Vec3 wrapper using GpuU32Vec4 internally
+/// GPU-aligned Vec3 wrapper using GpuUVec4 internally
 #[derive(Clone, Copy, Pod, Zeroable, ShaderType)]
 #[repr(C)]
 pub struct GpuUVec3 {
@@ -256,5 +308,55 @@ impl From<Aabb3d> for GpuBox3 {
             min: value.min.into(),
             max: value.max.into(),
         }
+    }
+}
+
+#[derive(Clone, Copy, Pod, Zeroable, Debug, ShaderType)]
+#[repr(C)]
+pub struct GpuCamera {
+    position: GpuVec3,
+    forward: GpuVec3,
+    right: GpuVec3,
+    up: GpuVec3,
+}
+
+impl GpuCamera {
+    pub fn new(position: GpuVec3, forward: GpuVec3, right: GpuVec3, up: GpuVec3) -> Self {
+        Self {
+            position,
+            forward,
+            right,
+            up,
+        }
+    }
+
+    pub fn position(&self) -> &GpuVec3 {
+        &self.position
+    }
+
+    pub fn forward(&self) -> &GpuVec3 {
+        &self.forward
+    }
+
+    pub fn right(&self) -> &GpuVec3 {
+        &self.right
+    }
+
+    pub fn up(&self) -> &GpuVec3 {
+        &self.up
+    }
+}
+
+impl From<&Transform> for GpuCamera {
+    fn from(transform: &Transform) -> Self {
+        // Position of the camera
+        let position = GpuVec3::from(transform.translation);
+
+        // Orientation vectors
+        let forward = GpuVec3::from(transform.forward());
+        let right = GpuVec3::from(transform.right());
+        let up = GpuVec3::from(transform.up());
+
+        GpuCamera::new(position, forward, right, up)
     }
 }
