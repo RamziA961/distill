@@ -2,17 +2,24 @@ use crate::{
     camera::{
         configuration::CameraConfiguration, marker::CameraMarkerPrimary, plugin::CameraPlugin,
     },
-    gpu_types::{GpuUVec3, GpuVec3},
-    voxelization::{VoxelizationPlugin, voxelization_worker::VoxelizationWorker},
+    gpu_types::{GpuBox3, GpuCamera, GpuUVec3, GpuVec2, GpuVec3},
+    voxelization::{
+        VoxelizationPlugin, VoxelizeMarker,
+        raymarch_material::RaymarchMaterial,
+        voxelization_worker::{SIZE, VoxelVariables, VoxelizationWorker},
+    },
 };
-use bevy::prelude::*;
+use bevy::{
+    asset::RenderAssetUsages,
+    prelude::*,
+    render::{mesh::MeshAabb, storage::ShaderStorageBuffer},
+};
 use bevy_app_compute::prelude::AppComputeWorker;
 
 mod camera;
 pub(crate) mod gpu_types;
 pub(crate) mod voxelization;
-
-static mut RUN: bool = false;
+mod window;
 
 fn main() {
     let mut app = App::new();
@@ -20,12 +27,19 @@ fn main() {
     app.add_plugins(CameraPlugin::<CameraMarkerPrimary> {
         configuration: CameraConfiguration::<CameraMarkerPrimary>::default(),
     });
-
     app.add_plugins(VoxelizationPlugin);
 
     app.add_systems(Startup, (camera_system, light_system));
-    app.add_systems(Startup, sphere);
-    app.add_systems(Update, (test).run_if(|| unsafe { !RUN }));
+
+    // window and cursor controls
+    app.add_systems(Startup, (window::grab_cursor, window::hide_cursor));
+    app.add_systems(Update, window::toggle_cursor);
+
+    app.add_systems(Startup, (sphere, test).chain());
+    app.add_systems(
+        Update,
+        (extract_sdf, spawn_sdf_test, update_raymarch_material).chain(),
+    );
 
     app.run();
 }
@@ -52,13 +66,14 @@ fn sphere(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.spawn((
+        VoxelizeMarker,
         Mesh3d(meshes.add(
             Sphere::new(1.0),
             //Cuboid::new(2.0, 2.0, 2.0),
         )),
         MeshMaterial3d(
             materials.add(StandardMaterial::from_color(Color::linear_rgba(
-                1.0, 0.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, 0.0,
             ))),
         ),
         Transform::from_xyz(0.0, 0.0, 0.0),
@@ -66,16 +81,15 @@ fn sphere(
 }
 
 fn test(
-    mesh_handle: Single<&Mesh3d>,
+    mesh_handle: Single<&Mesh3d, With<VoxelizeMarker>>,
     meshes: Res<Assets<Mesh>>,
     mut worker: ResMut<AppComputeWorker<VoxelizationWorker>>,
 ) {
-    if !worker.ready() {
-        return;
-    }
+    //if !worker.ready() {
+    //    return;
+    //}
 
     info!("Uploading mesh to GPU.");
-    unsafe { RUN = true };
 
     let mesh = meshes.get(mesh_handle.0.id()).unwrap();
 
@@ -101,8 +115,101 @@ fn test(
             .collect(),
     };
 
-    info!(n_verts = verts.len(), n_tris = triangles.len(),);
+    info!(n_verts = verts.len(), n_tris = triangles.len());
 
     worker.write_slice("vertices", &verts);
     worker.write_slice("triangles", &triangles);
+}
+
+fn extract_sdf(
+    mut commands: Commands,
+    mut shader_storage: ResMut<Assets<ShaderStorageBuffer>>,
+    worker: Res<AppComputeWorker<VoxelizationWorker>>,
+) {
+    if !worker.ready() {
+        warn!("Worker is not ready!");
+        return;
+    }
+
+    if !worker.is_changed() {
+        trace!("Worker has not changed.");
+        return;
+    }
+
+    let buff = worker
+        .read_raw(VoxelVariables::VoxelTexture.as_ref())
+        .to_vec();
+
+    let handle = shader_storage.add(ShaderStorageBuffer::new(
+        &buff,
+        RenderAssetUsages::RENDER_WORLD,
+    ));
+
+    commands.insert_resource(SdfBufferHandle(handle));
+}
+
+#[derive(Resource, Clone)]
+struct SdfBufferHandle(pub Handle<ShaderStorageBuffer>);
+
+#[derive(Component, Clone)]
+struct RenderTargetSingle;
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_sdf_test(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<RaymarchMaterial>>,
+    voxel_mesh_query: Query<&Mesh3d, With<VoxelizeMarker>>,
+    camera_transform: Single<&Transform, With<CameraMarkerPrimary>>,
+    render_target_query: Query<(), With<RenderTargetSingle>>,
+    sdf_buff_handle: Option<Res<SdfBufferHandle>>,
+    window: Query<&Window>,
+) {
+    if sdf_buff_handle.is_none() {
+        return;
+    }
+
+    if render_target_query.iter().count() == 1 {
+        return;
+    }
+
+    let screen_resolution = window
+        .single()
+        .map(|w| GpuVec2::new(w.width(), w.height()))
+        .unwrap_or(GpuVec2::new(800.0, 600.0));
+
+    let camera = GpuCamera::from(camera_transform.into_inner());
+
+    let mesh = meshes.get(voxel_mesh_query.iter().next().unwrap()).unwrap();
+    let grid_bounds = mesh.compute_aabb().map(GpuBox3::from).unwrap();
+    let grid_size = SIZE;
+
+    info!(grid_bounds=?grid_bounds, camera=?camera, screen_resolution=?screen_resolution);
+
+    commands.spawn((
+        RenderTargetSingle,
+        Mesh3d(meshes.add(
+            //Cuboid::from_size(grid_bounds.size().into()),
+            Rectangle::new(10.0, 10.0),
+        )),
+        MeshMaterial3d(materials.add(RaymarchMaterial {
+            voxel_texture: sdf_buff_handle.unwrap().0.clone(),
+            camera,
+            grid_bounds,
+            grid_size,
+            screen_resolution,
+        })),
+    ));
+}
+
+fn update_raymarch_material(
+    mut material: ResMut<Assets<RaymarchMaterial>>,
+    material_handles: Query<&MeshMaterial3d<RaymarchMaterial>>,
+    camera_transform: Single<&Transform, With<CameraMarkerPrimary>>,
+) {
+    let camera = GpuCamera::from(camera_transform.into_inner());
+    for handle in material_handles {
+        let mat = material.get_mut(handle).unwrap();
+        mat.camera = camera;
+    }
 }

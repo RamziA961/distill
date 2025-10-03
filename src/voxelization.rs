@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 use bevy_app_compute::prelude as compute;
 
-use crate::voxelization::snapshot::SnapshotType;
+use crate::voxelization::{raymarch_material::RaymarchMaterial, snapshot::SnapshotType};
 
+pub mod raymarch_material;
 mod snapshot;
 pub mod voxelization_worker;
 
@@ -18,7 +19,9 @@ impl Plugin for VoxelizationPlugin {
             voxelization_worker::VoxelizationWorker,
         >::default());
 
-        app.insert_resource(SnapshotType::Occupancy);
+        app.add_plugins(MaterialPlugin::<RaymarchMaterial>::default());
+
+        app.insert_resource(SnapshotType::SignedDistance);
         app.add_systems(Update, snapshot::snapshotter);
     }
 }

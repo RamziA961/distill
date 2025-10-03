@@ -1,9 +1,6 @@
 #![allow(dead_code)]
 
-use bevy::{
-    math::{Dir3, UVec3, UVec4, Vec2, Vec3, Vec3A, Vec4, bounding::Aabb3d},
-    transform::components::Transform,
-};
+use bevy::{math::bounding::Aabb3d, prelude::*, render::primitives::Aabb};
 use bevy_app_compute::prelude::ShaderType;
 use bytemuck::{Pod, Zeroable};
 
@@ -91,11 +88,23 @@ impl GpuVec3 {
     }
 }
 
+impl From<GpuVec3> for Vec3 {
+    fn from(value: GpuVec3) -> Self {
+        Vec3::new(value.x(), value.y(), value.z())
+    }
+}
+
 impl From<Vec3> for GpuVec3 {
     fn from(value: Vec3) -> Self {
         Self {
             inner: GpuVec4::new(value.x, value.y, value.z, 0.0),
         }
+    }
+}
+
+impl From<GpuVec3> for Vec3A {
+    fn from(value: GpuVec3) -> Self {
+        Vec3A::new(value.x(), value.y(), value.z())
     }
 }
 
@@ -307,6 +316,15 @@ impl From<Aabb3d> for GpuBox3 {
         Self {
             min: value.min.into(),
             max: value.max.into(),
+        }
+    }
+}
+
+impl From<Aabb> for GpuBox3 {
+    fn from(value: Aabb) -> Self {
+        Self {
+            min: value.min().into(),
+            max: value.max().into(),
         }
     }
 }

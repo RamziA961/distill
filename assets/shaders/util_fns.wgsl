@@ -1,3 +1,5 @@
+#import "shaders/common_types.wgsl"::{Box3, RayHit}
+
 // A small epsilon to prevent floating-point division by zero issues.
 const EPSILON: f32 = 0.00001;
 
@@ -50,4 +52,16 @@ fn ray_triangle_intersect(origin: vec3<f32>, direction: vec3<f32>, a: vec3<f32>,
 // Utility function to calculate triangle normal (assuming consistent winding)
 fn calculate_triangle_normal(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec3<f32> {
     return normalize(cross(b - a, c - a));
+}
+
+fn intersect_box(origin: vec3<f32>, dir: vec3<f32>, box: Box3) -> RayHit {
+    var t1 = (box.min - origin) / dir;
+    var t2 = (box.max - origin) / dir;
+
+    // entry = max of mins, exit = min of maxs
+    let tmin = max(max(min(t1.x, t2.x), min(t1.y, t2.y)), min(t1.z, t2.z));
+    let tmax = min(min(max(t1.x, t2.x), max(t1.y, t2.y)), max(t1.z, t2.z));
+
+    let hit = (tmax >= max(tmin, 0.0));
+    return RayHit(tmin, tmax, hit);
 }
