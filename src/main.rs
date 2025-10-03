@@ -85,10 +85,6 @@ fn test(
     meshes: Res<Assets<Mesh>>,
     mut worker: ResMut<AppComputeWorker<VoxelizationWorker>>,
 ) {
-    //if !worker.ready() {
-    //    return;
-    //}
-
     info!("Uploading mesh to GPU.");
 
     let mesh = meshes.get(mesh_handle.0.id()).unwrap();
@@ -132,7 +128,7 @@ fn extract_sdf(
     }
 
     if !worker.is_changed() {
-        trace!("Worker has not changed.");
+        trace!("Worker has not changed. Skipping read.");
         return;
     }
 
@@ -160,7 +156,7 @@ fn spawn_sdf_test(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<RaymarchMaterial>>,
     voxel_mesh_query: Query<&Mesh3d, With<VoxelizeMarker>>,
-    camera_transform: Single<&Transform, With<CameraMarkerPrimary>>,
+    camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
     render_target_query: Query<(), With<RenderTargetSingle>>,
     sdf_buff_handle: Option<Res<SdfBufferHandle>>,
     window: Query<&Window>,
@@ -178,7 +174,9 @@ fn spawn_sdf_test(
         .map(|w| GpuVec2::new(w.width(), w.height()))
         .unwrap_or(GpuVec2::new(800.0, 600.0));
 
-    let camera = GpuCamera::from(camera_transform.into_inner());
+    let (transform, projection) = camera_params.into_inner();
+
+    let camera = GpuCamera::from_transform_and_projection(transform, projection);
 
     let mesh = meshes.get(voxel_mesh_query.iter().next().unwrap()).unwrap();
     let grid_bounds = mesh.compute_aabb().map(GpuBox3::from).unwrap();
@@ -186,28 +184,30 @@ fn spawn_sdf_test(
 
     info!(grid_bounds=?grid_bounds, camera=?camera, screen_resolution=?screen_resolution);
 
+    //let bbox = Aabb::from(grid_bounds);
     commands.spawn((
         RenderTargetSingle,
         Mesh3d(meshes.add(
-            //Cuboid::from_size(grid_bounds.size().into()),
-            Rectangle::new(10.0, 10.0),
+            Cuboid::from_size(grid_bounds.size().into()),
+            /*Rectangle::from_corners(bbox.min().xy(), bbox.max().xy()),*/
         )),
         MeshMaterial3d(materials.add(RaymarchMaterial {
             voxel_texture: sdf_buff_handle.unwrap().0.clone(),
             camera,
             grid_bounds,
             grid_size,
-            screen_resolution,
         })),
+        Transform::from_translation(grid_bounds.center().into()),
     ));
 }
 
 fn update_raymarch_material(
     mut material: ResMut<Assets<RaymarchMaterial>>,
     material_handles: Query<&MeshMaterial3d<RaymarchMaterial>>,
-    camera_transform: Single<&Transform, With<CameraMarkerPrimary>>,
+    camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
 ) {
-    let camera = GpuCamera::from(camera_transform.into_inner());
+    let (transform, projection) = camera_params.into_inner();
+    let camera = GpuCamera::from_transform_and_projection(transform, projection);
     for handle in material_handles {
         let mat = material.get_mut(handle).unwrap();
         mat.camera = camera;

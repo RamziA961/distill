@@ -13,9 +13,6 @@ var<uniform> grid_size: u32;
 @group(2) @binding(3)
 var<uniform> grid_bounds: Box3;
 
-@group(2) @binding(4)
-var<uniform> screen_resolution: vec2<f32>;
-
 fn voxel_lookup(p: vec3<f32>) -> f32 {
     let extent = grid_bounds.max - grid_bounds.min;
     let rel = (p - grid_bounds.min) / extent;
@@ -56,57 +53,36 @@ fn raymarch(origin: vec3<f32>, dir: vec3<f32>) -> f32 {
     return -1.0; // miss
 }
 
-//@fragment
-//fn fragment(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-//    let frag_coord = position.xy;
-//    let uv = (frag_coord / screen_resolution) * 2.0 - 1.0;
-//
-//    let origin = camera.position;
-//    let dir = normalize(camera.forward + uv.x * camera.right + uv.y * camera.up);
-//
-//    // Intersect with the cube bounding the SDF
-//    let hit = intersect_box(origin, dir, grid_bounds);
-//    if (!hit.hit) {
-//        return vec4<f32>(0.0, 0.0, 0.0, 1.0); // background
-//    }
-//
-//    let start = origin + dir * max(hit.t_min, 1.0);
-//    // Raymarch inside bounds
-//    let t = raymarch(start, dir);
-//    if (t < 0.0) {
-//        return vec4<f32>(0.5, 0.0, 0.0, 0.0); // miss inside cube
-//    }
-//
-//    let p = origin + dir * t;
-//    let n = normalize(vec3<f32>(
-//        voxel_lookup(p + vec3<f32>(EPSILON, 0, 0)) - voxel_lookup(p - vec3<f32>(EPSILON, 0, 0)),
-//        voxel_lookup(p + vec3<f32>(0, EPSILON, 0)) - voxel_lookup(p - vec3<f32>(0, EPSILON, 0)),
-//        voxel_lookup(p + vec3<f32>(0, 0, EPSILON)) - voxel_lookup(p - vec3<f32>(0, 0, EPSILON))
-//    ));
-//
-//    return vec4<f32>(0.5 * (n + vec3<f32>(1.0)), 1.0);
-//}
-
 @fragment
-fn fragment(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+fn fragment(
+    @builtin(position) position: vec4<f32>,
+    @location(0) world_position: vec4<f32>,
+) -> @location(0) vec4<f32> {
     let frag_coord = position.xy;
-    let uv = (frag_coord / screen_resolution) * 2.0 - 1.0;
+    let camera_position = camera.inv_view_mat[3].xyz;
 
-    let origin = camera.position;
-    let dir = normalize(camera.forward + uv.x * camera.right + uv.y * camera.up);
+    let dir = normalize(world_position.xyz - camera_position);
 
-    let start = origin + dir;
-    // Raymarch inside bounds
-    let t = raymarch(start, dir);
-    if (t < 0.0) {
-        return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+    // Intersect with the cube bounding the SDF
+    let hit = intersect_box(camera_position, dir, grid_bounds);
+    if (!hit.hit) {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0); // background
     }
 
-    let p = origin + dir * t;
+    // Raymarch inside bounds
+    let start = camera_position + dir * max(hit.t_min, 0.0);
+    let t = raymarch(start, dir);
+    if (t < 0.0) {
+        return vec4<f32>(0.5, 0.0, 0.0, 0.0); // miss inside cube
+    }
+
+    let p = camera_position + dir * t;
     let n = normalize(vec3<f32>(
         voxel_lookup(p + vec3<f32>(EPSILON, 0, 0)) - voxel_lookup(p - vec3<f32>(EPSILON, 0, 0)),
         voxel_lookup(p + vec3<f32>(0, EPSILON, 0)) - voxel_lookup(p - vec3<f32>(0, EPSILON, 0)),
         voxel_lookup(p + vec3<f32>(0, 0, EPSILON)) - voxel_lookup(p - vec3<f32>(0, 0, EPSILON))
     ));
+
     return vec4<f32>(0.5 * (n + vec3<f32>(1.0)), 1.0);
 }
+

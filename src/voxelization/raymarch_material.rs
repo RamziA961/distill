@@ -1,3 +1,4 @@
+use crate::gpu_types::{GpuBox3, GpuCamera};
 use bevy::{
     prelude::*,
     render::{
@@ -5,8 +6,6 @@ use bevy::{
         storage::ShaderStorageBuffer,
     },
 };
-
-use crate::gpu_types::{GpuBox3, GpuCamera, GpuVec2};
 
 #[derive(Asset, Clone, Debug, AsBindGroup, TypePath)]
 pub struct RaymarchMaterial {
@@ -21,14 +20,15 @@ pub struct RaymarchMaterial {
 
     #[uniform(3)]
     pub grid_bounds: GpuBox3,
-
-    #[uniform(4)]
-    pub screen_resolution: GpuVec2,
 }
 
 impl Material for RaymarchMaterial {
     fn fragment_shader() -> ShaderRef {
         "shaders/raymarcher.frag.wgsl".into()
     }
-}
 
+    fn alpha_mode(&self) -> AlphaMode {
+        //TODO: Change to AlphaMode::Blend
+        AlphaMode::Opaque
+    }
+}

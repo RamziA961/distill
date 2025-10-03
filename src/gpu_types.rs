@@ -1,6 +1,10 @@
 #![allow(dead_code)]
 
-use bevy::{math::bounding::Aabb3d, prelude::*, render::primitives::Aabb};
+use bevy::{
+    math::bounding::Aabb3d,
+    prelude::*,
+    render::{camera::CameraProjection, primitives::Aabb},
+};
 use bevy_app_compute::prelude::ShaderType;
 use bytemuck::{Pod, Zeroable};
 
@@ -329,52 +333,61 @@ impl From<Aabb> for GpuBox3 {
     }
 }
 
+impl From<GpuBox3> for Aabb {
+    fn from(value: GpuBox3) -> Self {
+        let min = Vec3::from(*value.min());
+        let max = Vec3::from(*value.max());
+        Self::from_min_max(min, max)
+    }
+}
+
 #[derive(Clone, Copy, Pod, Zeroable, Debug, ShaderType)]
 #[repr(C)]
 pub struct GpuCamera {
-    position: GpuVec3,
-    forward: GpuVec3,
-    right: GpuVec3,
-    up: GpuVec3,
+    view_mat: Mat4,
+    inv_view_mat: Mat4,
+    projection_mat: Mat4,
+    inv_projection_mat: Mat4,
 }
 
 impl GpuCamera {
-    pub fn new(position: GpuVec3, forward: GpuVec3, right: GpuVec3, up: GpuVec3) -> Self {
+    pub fn new(
+        view_mat: Mat4,
+        inv_view_mat: Mat4,
+        projection_mat: Mat4,
+        inv_projection_mat: Mat4,
+    ) -> Self {
         Self {
-            position,
-            forward,
-            right,
-            up,
+            view_mat,
+            inv_view_mat,
+            projection_mat,
+            inv_projection_mat,
         }
     }
-
-    pub fn position(&self) -> &GpuVec3 {
-        &self.position
+    pub fn view_mat(&self) -> &Mat4 {
+        &self.view_mat
     }
 
-    pub fn forward(&self) -> &GpuVec3 {
-        &self.forward
+    pub fn inv_view_mat(&self) -> &Mat4 {
+        &self.inv_view_mat
     }
 
-    pub fn right(&self) -> &GpuVec3 {
-        &self.right
+    pub fn projection_mat(&self) -> &Mat4 {
+        &self.projection_mat
     }
 
-    pub fn up(&self) -> &GpuVec3 {
-        &self.up
+    pub fn inv_projection_mat(&self) -> &Mat4 {
+        &self.inv_projection_mat
     }
-}
 
-impl From<&Transform> for GpuCamera {
-    fn from(transform: &Transform) -> Self {
-        // Position of the camera
-        let position = GpuVec3::from(transform.translation);
-
-        // Orientation vectors
-        let forward = GpuVec3::from(transform.forward());
-        let right = GpuVec3::from(transform.right());
-        let up = GpuVec3::from(transform.up());
-
-        GpuCamera::new(position, forward, right, up)
+    pub fn from_transform_and_projection(transform: &Transform, projection: &Projection) -> Self {
+        let t_mat = transform.compute_matrix();
+        let proj_mat = projection.get_clip_from_view();
+        Self {
+            view_mat: t_mat.inverse(),
+            inv_view_mat: t_mat,
+            inv_projection_mat: proj_mat.inverse(),
+            projection_mat: proj_mat,
+        }
     }
 }

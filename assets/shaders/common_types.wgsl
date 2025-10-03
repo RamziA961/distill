@@ -5,10 +5,10 @@ struct Box3 {
 }
 
 struct Camera {
-    position: vec3<f32>,
-    forward: vec3<f32>,
-    right: vec3<f32>,
-    up: vec3<f32>,
+    view_mat: mat4x4f,
+    inv_view_mat: mat4x4f,
+    projection_mat: mat4x4f,
+    inv_projection_mat: mat4x4f,
 }
 
 struct RayHit {
