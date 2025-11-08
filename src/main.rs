@@ -18,6 +18,7 @@ use bevy::{
 };
 use bevy_app_compute::prelude::AppComputeWorker;
 
+pub(crate) mod bvh;
 mod camera;
 pub(crate) mod gpu_types;
 pub(crate) mod voxelization;
