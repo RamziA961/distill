@@ -28,7 +28,6 @@ impl Material for RaymarchMaterial {
     }
 
     fn alpha_mode(&self) -> AlphaMode {
-        //TODO: Change to AlphaMode::Blend
-        AlphaMode::Opaque
+        AlphaMode::Blend
     }
 }

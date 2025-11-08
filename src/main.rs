@@ -1,3 +1,5 @@
+use std::f32::consts::FRAC_PI_2;
+
 use crate::{
     camera::{
         configuration::CameraConfiguration, marker::CameraMarkerPrimary, plugin::CameraPlugin,
@@ -24,6 +26,8 @@ mod window;
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
+    app.insert_resource(ClearColor(Color::WHITE));
+
     app.add_plugins(CameraPlugin::<CameraMarkerPrimary> {
         configuration: CameraConfiguration::<CameraMarkerPrimary>::default(),
     });
@@ -35,7 +39,7 @@ fn main() {
     app.add_systems(Startup, (window::grab_cursor, window::hide_cursor));
     app.add_systems(Update, window::toggle_cursor);
 
-    app.add_systems(Startup, (sphere, test).chain());
+    app.add_systems(Startup, (spawn_target_mesh, test).chain());
     app.add_systems(
         Update,
         (extract_sdf, spawn_sdf_test, update_raymarch_material).chain(),
@@ -60,7 +64,7 @@ fn light_system(mut commands: Commands) {
     commands.spawn((PointLight::default(), Transform::from_xyz(0.0, 10.0, 0.0)));
 }
 
-fn sphere(
+fn spawn_target_mesh(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -68,15 +72,16 @@ fn sphere(
     commands.spawn((
         VoxelizeMarker,
         Mesh3d(meshes.add(
-            Sphere::new(1.0),
+            //Sphere::new(1.0),
             //Cuboid::new(2.0, 2.0, 2.0),
+            Torus::new(0.5, 2.0),
         )),
         MeshMaterial3d(
             materials.add(StandardMaterial::from_color(Color::linear_rgba(
                 1.0, 0.0, 0.0, 0.0,
             ))),
         ),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        Transform::from_rotation(Quat::from_rotation_y(FRAC_PI_2)),
     ));
 }
 
@@ -184,7 +189,6 @@ fn spawn_sdf_test(
 
     info!(grid_bounds=?grid_bounds, camera=?camera, screen_resolution=?screen_resolution);
 
-    //let bbox = Aabb::from(grid_bounds);
     commands.spawn((
         RenderTargetSingle,
         Mesh3d(meshes.add(

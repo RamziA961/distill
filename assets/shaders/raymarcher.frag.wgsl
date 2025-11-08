@@ -29,6 +29,53 @@ fn voxel_lookup(p: vec3<f32>) -> f32 {
     return voxel_texture[idx];
 }
 
+fn voxel_lookup_trilinear(p: vec3<f32>) -> f32 {
+    let extent = grid_bounds.max - grid_bounds.min;
+    let rel = (p - grid_bounds.min) / extent;
+    let uvw = clamp(rel, vec3<f32>(0.0), vec3<f32>(1.0));
+
+    // Continuous Index in [0, grid_size-1]
+    let fsize = f32(grid_size - 1u);
+    let fx = uvw.x * fsize;
+    let fy = uvw.y * fsize;
+    let fz = uvw.z * fsize;
+
+    let ix = u32(fx);
+    let iy = u32(fy);
+    let iz = u32(fz);
+
+    let wx = fx - floor(fx);
+    let wy = fy - floor(fy);
+    let wz = fz - floor(fz);
+
+    // Clamp indices to valid range for sampling corners
+    let ix1 = min(ix + 1u, grid_size - 1u);
+    let iy1 = min(iy + 1u, grid_size - 1u);
+    let iz1 = min(iz + 1u, grid_size - 1u);
+
+    let s000 = voxel_texture[ix + iy * grid_size + iz * grid_size * grid_size];
+    let s100 = voxel_texture[ix1 + iy * grid_size + iz * grid_size * grid_size];
+    let s010 = voxel_texture[ix + iy1 * grid_size + iz * grid_size * grid_size];
+    let s110 = voxel_texture[ix1 + iy1 * grid_size + iz * grid_size * grid_size];
+    let s001 = voxel_texture[ix + iy * grid_size + iz1 * grid_size * grid_size];
+    let s101 = voxel_texture[ix1 + iy * grid_size + iz1 * grid_size * grid_size];
+    let s011 = voxel_texture[ix + iy1 * grid_size + iz1 * grid_size * grid_size];
+    let s111 = voxel_texture[ix1 + iy1 * grid_size + iz1 * grid_size * grid_size];
+
+    // lerp in x
+    let c00 = mix(s000, s100, wx);
+    let c10 = mix(s010, s110, wx);
+    let c01 = mix(s001, s101, wx);
+    let c11 = mix(s011, s111, wx);
+
+    //lerp in y
+    let c0 = mix(c00, c10, wy);
+    let c1 = mix(c01, c11, wy);
+
+    //lerp in z
+    return mix(c0, c1, wz);
+}
+
 
 const EPSILON: f32 = 0.0001;
 const MAX_STEPS = 128u;
@@ -39,7 +86,7 @@ fn raymarch(origin: vec3<f32>, dir: vec3<f32>) -> f32 {
 
     for (var i = 0u; i < MAX_STEPS; i++) {
         let p = origin + dir * t;
-        let d = voxel_lookup(p);
+        let d = voxel_lookup_trilinear(p);
 
         if (d < EPSILON) {
             return t; // hit
@@ -73,16 +120,18 @@ fn fragment(
     let start = camera_position + dir * max(hit.t_min, 0.0);
     let t = raymarch(start, dir);
     if (t < 0.0) {
-        return vec4<f32>(0.5, 0.0, 0.0, 0.0); // miss inside cube
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0); // miss inside cube
     }
 
-    let p = camera_position + dir * t;
+    //let p = camera_position + dir * t;
+    let p = start + dir * t;
     let n = normalize(vec3<f32>(
         voxel_lookup(p + vec3<f32>(EPSILON, 0, 0)) - voxel_lookup(p - vec3<f32>(EPSILON, 0, 0)),
         voxel_lookup(p + vec3<f32>(0, EPSILON, 0)) - voxel_lookup(p - vec3<f32>(0, EPSILON, 0)),
         voxel_lookup(p + vec3<f32>(0, 0, EPSILON)) - voxel_lookup(p - vec3<f32>(0, 0, EPSILON))
     ));
 
-    return vec4<f32>(0.5 * (n + vec3<f32>(1.0)), 1.0);
+    //return vec4<f32>(0.5 * (n + vec3<f32>(1.0)), 1.0);
+    return vec4<f32>(1.0, 0.0, 0.0, 1.0);
 }
 

@@ -54,7 +54,7 @@ impl ComputeWorker for VoxelizationWorker {
         let voxel_uniforms = VoxelUniforms { size: SIZE };
 
         let mesh_uniforms = MeshUniforms {
-            aabb: Aabb3d::new(Vec3::splat(0.0), Vec3::splat(1.0)).into(),
+            aabb: Aabb3d::new(Vec3::splat(0.0), Vec3::splat(2.0)).into(),
         };
 
         AppComputeWorkerBuilder::new(world)
@@ -62,8 +62,8 @@ impl ComputeWorker for VoxelizationWorker {
                 VoxelVariables::VoxelTexture.as_ref(),
                 (SIZE * SIZE * SIZE * 4) as u64,
             )
-            .add_empty_rw_storage(VoxelVariables::Vertices.as_ref(), 362 * 16)
-            .add_empty_rw_storage(VoxelVariables::Triangles.as_ref(), 720 * 16)
+            .add_empty_rw_storage(VoxelVariables::Vertices.as_ref(), 826 * 16)
+            .add_empty_rw_storage(VoxelVariables::Triangles.as_ref(), 1536 * 16)
             .add_uniform(VoxelVariables::VoxelUniforms.as_ref(), &voxel_uniforms)
             .add_uniform(VoxelVariables::MeshUniforms.as_ref(), &mesh_uniforms)
             .add_pass::<VoxelizationShader>(
