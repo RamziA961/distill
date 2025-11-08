@@ -76,11 +76,9 @@ fn voxel_lookup_trilinear(p: vec3<f32>) -> f32 {
     return mix(c0, c1, wz);
 }
 
-
-const EPSILON: f32 = 0.0001;
 const MAX_STEPS = 128u;
 
-fn raymarch(origin: vec3<f32>, dir: vec3<f32>) -> f32 {
+fn raymarch(origin: vec3<f32>, dir: vec3<f32>, eps: f32) -> f32 {
     var t = 0.0;
     let max_dist = length(grid_bounds.max - grid_bounds.min);
 
@@ -88,7 +86,7 @@ fn raymarch(origin: vec3<f32>, dir: vec3<f32>) -> f32 {
         let p = origin + dir * t;
         let d = voxel_lookup_trilinear(p);
 
-        if (d < EPSILON) {
+        if (d < eps) {
             return t; // hit
         }
 
@@ -113,22 +111,25 @@ fn fragment(
     // Intersect with the cube bounding the SDF
     let hit = intersect_box(camera_position, dir, grid_bounds);
     if (!hit.hit) {
-        return vec4<f32>(0.0, 0.0, 0.0, 0.0); // background
+        return vec4<f32>(0.0); // background
     }
+    
+    let voxel_extent = (grid_bounds.max - grid_bounds.min) / f32(grid_size);
+    let eps = max(max(voxel_extent.x, voxel_extent.y), voxel_extent.z) * 0.6;
 
     // Raymarch inside bounds
     let start = camera_position + dir * max(hit.t_min, 0.0);
-    let t = raymarch(start, dir);
+    let t = raymarch(start, dir, eps);
     if (t < 0.0) {
-        return vec4<f32>(0.0, 0.0, 0.0, 0.0); // miss inside cube
+        return vec4<f32>(0.0); // miss inside cube
     }
 
     //let p = camera_position + dir * t;
     let p = start + dir * t;
     let n = normalize(vec3<f32>(
-        voxel_lookup(p + vec3<f32>(EPSILON, 0, 0)) - voxel_lookup(p - vec3<f32>(EPSILON, 0, 0)),
-        voxel_lookup(p + vec3<f32>(0, EPSILON, 0)) - voxel_lookup(p - vec3<f32>(0, EPSILON, 0)),
-        voxel_lookup(p + vec3<f32>(0, 0, EPSILON)) - voxel_lookup(p - vec3<f32>(0, 0, EPSILON))
+        voxel_lookup_trilinear(p + vec3<f32>(eps, 0, 0)) - voxel_lookup_trilinear(p - vec3<f32>(eps, 0, 0)),
+        voxel_lookup_trilinear(p + vec3<f32>(0, eps, 0)) - voxel_lookup_trilinear(p - vec3<f32>(0, eps, 0)),
+        voxel_lookup_trilinear(p + vec3<f32>(0, 0, eps)) - voxel_lookup_trilinear(p - vec3<f32>(0, 0, eps))
     ));
 
     //return vec4<f32>(0.5 * (n + vec3<f32>(1.0)), 1.0);
