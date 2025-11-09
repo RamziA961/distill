@@ -49,3 +49,8 @@ fn closest_point_on_triangle(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f
     let w = vc * denom;
     return a + ab * v + ac * w;
 }
+
+fn distance_to_aabb(pt: vec3<f32>, minv: vec3<f32>, maxv: vec3<f32>) -> f32 {
+    let d = max(max(minv - pt, vec3<f32>(0.0)), pt - maxv);
+    return length(d);
+}

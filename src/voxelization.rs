@@ -10,6 +10,9 @@ pub mod voxelization_worker;
 #[derive(Debug, Clone, Component)]
 pub struct VoxelizeMarker;
 
+#[derive(Debug, Clone, Component)]
+pub struct VoxelizedMarker;
+
 pub struct VoxelizationPlugin;
 
 impl Plugin for VoxelizationPlugin {

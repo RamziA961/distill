@@ -1,4 +1,10 @@
 
+struct Triangle {
+    a: vec3<f32>,
+    b: vec3<f32>,
+    c: vec3<f32>,
+}
+
 struct Box3 {
     min: vec3<f32>,
     max: vec3<f32>,
@@ -15,4 +21,11 @@ struct RayHit {
     t_min: f32, // distance along ray to entry point
     t_max: f32, // distance along ray to exit point
     hit: bool,
+}
+
+struct BvhNode {
+    aabb: Box3,
+    left_index: u32,
+    right_index: u32,
+    triangle_count: u32,
 }

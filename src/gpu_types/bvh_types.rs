@@ -1,37 +1,41 @@
 use super::GpuBox3;
+use bevy_app_compute::prelude::ShaderType;
+use bytemuck::{Pod, Zeroable};
 
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable, ShaderType)]
 #[repr(C)]
 pub struct GpuBvhNode {
     aabb: GpuBox3,
 
-    /// child index or first triangle index
-    entry_index: u32,
-
+    left_index: u32,
+    right_index: u32,
     /// 0 = internal node, >0 = leaf
-    tri_count: u32,
+    triangle_count: u32,
 
     /// Padding for 16 byte alignment on the GPU
     _pad0: u32,
-    _pad1: u32,
 }
 
 impl GpuBvhNode {
-    pub fn new(aabb: GpuBox3, entry_index: u32, tri_count: u32) -> Self {
+    pub fn new(aabb: GpuBox3, left_index: u32, right_index: u32, triangle_count: u32) -> Self {
         Self {
             aabb,
-            entry_index,
-            tri_count,
+            left_index,
+            right_index,
+            triangle_count,
             _pad0: 0,
-            _pad1: 0,
         }
     }
 
-    pub fn with_entry_index(&mut self, entry_index: u32) {
-        self.entry_index = entry_index;
+    pub fn with_left_index(&mut self, left_index: u32) {
+        self.left_index = left_index;
     }
 
-    pub fn with_tri_count(&mut self, tri_count: u32) {
-        self.tri_count = tri_count;
+    pub fn with_right_index(&mut self, right_index: u32) {
+        self.right_index = right_index;
+    }
+
+    pub fn with_triangle_count(&mut self, triangle_count: u32) {
+        self.triangle_count = triangle_count;
     }
 }

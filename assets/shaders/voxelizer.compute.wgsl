@@ -1,6 +1,6 @@
-#import "shaders/distance_fns.wgsl"::closest_point_on_triangle
-#import "shaders/util_fns.wgsl"::calculate_triangle_normal
-#import "shaders/common_types.wgsl"::Box3;
+#import "shaders/distance_fns.wgsl"::{distance_to_aabb, closest_point_on_triangle};
+#import "shaders/util_fns.wgsl"::calculate_triangle_normal;
+#import "shaders/common_types.wgsl"::{Box3, BvhNode, Triangle};
 
 struct VoxelUniforms {
     size: u32,
@@ -14,16 +14,18 @@ struct MeshUniforms {
 var<storage, read_write> voxel_texture: array<f32>;
 
 @group(0) @binding(1)
-var<storage> vertices: array<vec3<f32>>;
+var<storage> triangles: array<Triangle>;
 
 @group(0) @binding(2)
-var<storage> triangles: array<vec3<u32>>;
+var<storage> bvh_nodes: array<BvhNode>;
 
 @group(0) @binding(3)
 var<uniform> voxel_uniforms: VoxelUniforms;
 
 @group(0) @binding(4)
 var<uniform> mesh_uniforms: MeshUniforms;
+
+const STACK_SIZE: u32 = 128;
 
 @compute @workgroup_size(8, 8, 8)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -46,23 +48,70 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     var closest_normal = vec3<f32>(0.0); // Store normal of the closest triangle
     var closest_pt = vec3<f32>(0.0); // Store the actual closest point on the closest triangle
 
-    for(var t_i = 0u; t_i < arrayLength(&triangles); t_i++) {
-        let t = triangles[t_i];
+    var stack: array<u32, STACK_SIZE>;
+    var stack_ptr = 1u;
+    stack[0] = 0u; // root node
 
-        let a = vertices[t.x];
-        let b = vertices[t.y];
-        let c = vertices[t.z];
-
-        let curr_closest_pt = closest_point_on_triangle(p_local, a, b, c);
-        let dist = length(curr_closest_pt - p_local);
+    loop {
+        if (stack_ptr == 0u) {
+            break;
+        }
         
-        if(dist < unsigned_dist) {
-            unsigned_dist = dist;
-            closest_pt = curr_closest_pt;
-            closest_normal = calculate_triangle_normal(a, b, c);
+        stack_ptr -= 1u; // pop
+        let node_index = stack[stack_ptr];
+
+        let node = bvh_nodes[node_index];
+        // AABB distance test
+        let dmin = distance_to_aabb(p_local, node.aabb.min, node.aabb.max);
+        if(dmin > unsigned_dist) {
+            // Skip nodes farther than current best
+            continue;
+        }
+
+        if (node.triangle_count > 0u) {
+            // Leaf node
+            for (var i = 0u; i < node.triangle_count; i++) {
+                let tri_idx = node.left_index + i;
+                let t = triangles[tri_idx];
+
+                let curr_closest_pt = closest_point_on_triangle(p_local, t.a, t.b, t.c);
+                let dist = length(curr_closest_pt - p_local);
+
+                if (dist < unsigned_dist) {
+                    unsigned_dist = dist;
+                    closest_pt = curr_closest_pt;
+                    closest_normal = calculate_triangle_normal(t.a, t.b, t.c);
+                }
+            }
+        } else {
+            // Internal node - push children onto stack
+            if (stack_ptr + 2u > STACK_SIZE) {
+                // Avoid overflow
+                continue;
+            }
+
+            let left = node.left_index;
+            let right = node.right_index;
+            
+            // Compute rough distance to children AABB to order pushes
+            let dleft = distance_to_aabb(p_local, bvh_nodes[left].aabb.min, bvh_nodes[left].aabb.max);
+            let dright = distance_to_aabb(p_local, bvh_nodes[right].aabb.min, bvh_nodes[right].aabb.max);
+
+            // Push the farther one first (so nearer one gets processed next)
+            if(dleft < dright) {
+                // left first
+                stack[stack_ptr] = right;
+                stack[stack_ptr + 1u] = left;
+            } else {
+                // right first
+                stack[stack_ptr] = left;
+                stack[stack_ptr + 1u] = right;
+            }
+            stack_ptr += 2u;
+            
         }
     }
-    
+
     // Sign determination using closest normal
     // For a point P and its closest point on the surface (closest_p_on_tri) with normal (closest_normal)
     // if dot(P - closest_p_on_tri, closest_normal) > 0, P is outside, else inside.

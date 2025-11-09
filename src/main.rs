@@ -1,12 +1,11 @@
-use std::f32::consts::FRAC_PI_2;
-
 use crate::{
+    bvh::{BvhData, BvhPlugin},
     camera::{
         configuration::CameraConfiguration, marker::CameraMarkerPrimary, plugin::CameraPlugin,
     },
-    gpu_types::{GpuBox3, GpuCamera, GpuUVec3, GpuVec2, GpuVec3},
+    gpu_types::{GpuBox3, GpuCamera},
     voxelization::{
-        VoxelizationPlugin, VoxelizeMarker,
+        VoxelizationPlugin, VoxelizeMarker, VoxelizedMarker,
         raymarch_material::RaymarchMaterial,
         voxelization_worker::{SIZE, VoxelVariables, VoxelizationWorker},
     },
@@ -32,7 +31,7 @@ fn main() {
     app.add_plugins(CameraPlugin::<CameraMarkerPrimary> {
         configuration: CameraConfiguration::<CameraMarkerPrimary>::default(),
     });
-    app.add_plugins(VoxelizationPlugin);
+    app.add_plugins((BvhPlugin, VoxelizationPlugin));
 
     app.add_systems(Startup, (camera_system, light_system));
 
@@ -40,10 +39,11 @@ fn main() {
     app.add_systems(Startup, (window::grab_cursor, window::hide_cursor));
     app.add_systems(Update, window::toggle_cursor);
 
-    app.add_systems(Startup, (spawn_target_mesh, test).chain());
+    app.add_systems(Startup, spawn_target_mesh);
+
     app.add_systems(
         Update,
-        (extract_sdf, spawn_sdf_test, update_raymarch_material).chain(),
+        (test, extract_sdf, spawn_sdf_test, update_raymarch_material).chain(),
     );
 
     app.run();
@@ -75,52 +75,41 @@ fn spawn_target_mesh(
         Mesh3d(meshes.add(
             //Sphere::new(1.0),
             //Cuboid::new(2.0, 2.0, 2.0),
-            Torus::new(0.5, 2.0),
+            Torus::new(0.5, 1.0),
         )),
         MeshMaterial3d(
             materials.add(StandardMaterial::from_color(Color::linear_rgba(
                 1.0, 0.0, 0.0, 0.0,
             ))),
         ),
-        Transform::from_rotation(Quat::from_rotation_y(FRAC_PI_2)),
+        //Transform::from_rotation(Quat::from_rotation_y(FRAC_PI_2)),
     ));
 }
 
+#[allow(clippy::type_complexity)]
 fn test(
-    mesh_handle: Single<&Mesh3d, With<VoxelizeMarker>>,
-    meshes: Res<Assets<Mesh>>,
+    mut commands: Commands,
+    mesh_data: Query<(Entity, &BvhData), (With<VoxelizeMarker>, Without<VoxelizedMarker>)>,
     mut worker: ResMut<AppComputeWorker<VoxelizationWorker>>,
 ) {
+    if mesh_data.iter().count() == 0 {
+        return;
+    }
+
     info!("Uploading mesh to GPU.");
+    let (entity, bvh_data) = mesh_data.iter().next().unwrap();
 
-    let mesh = meshes.get(mesh_handle.0.id()).unwrap();
+    info!(
+        n_triangles = bvh_data.triangles.len(),
+        n_bvh_nodes = bvh_data.nodes.len(),
+    );
 
-    let verts = match mesh
-        .attribute(Mesh::ATTRIBUTE_POSITION)
-        .expect("Mesh has no positions")
-    {
-        bevy::render::mesh::VertexAttributeValues::Float32x3(verts) => verts
-            .clone()
-            .iter()
-            .map(|s| GpuVec3::from_slice(s))
-            .collect::<Vec<_>>(),
-        _ => panic!("Unexpected format!"),
-    };
+    info!(bvh_root = ?bvh_data.nodes[0]);
 
-    let triangles: Vec<_> = match mesh.indices().unwrap() {
-        bevy::render::mesh::Indices::U32(indices) => {
-            indices.chunks_exact(3).map(GpuUVec3::from_slice).collect()
-        }
-        bevy::render::mesh::Indices::U16(indices) => indices
-            .chunks_exact(3)
-            .map(|tri| GpuUVec3::new(tri[0] as u32, tri[1] as u32, tri[2] as u32))
-            .collect(),
-    };
-
-    info!(n_verts = verts.len(), n_tris = triangles.len());
-
-    worker.write_slice("vertices", &verts);
-    worker.write_slice("triangles", &triangles);
+    worker.write_slice(VoxelVariables::Triangles.as_ref(), &bvh_data.triangles);
+    worker.write_slice(VoxelVariables::BvhNodes.as_ref(), &bvh_data.nodes);
+    commands.entity(entity).insert(VoxelizedMarker);
+    info!("Mesh uploaded to GPU.");
 }
 
 fn extract_sdf(
@@ -165,7 +154,6 @@ fn spawn_sdf_test(
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
     render_target_query: Query<(), With<RenderTargetSingle>>,
     sdf_buff_handle: Option<Res<SdfBufferHandle>>,
-    window: Query<&Window>,
 ) {
     if sdf_buff_handle.is_none() {
         return;
@@ -175,11 +163,6 @@ fn spawn_sdf_test(
         return;
     }
 
-    let screen_resolution = window
-        .single()
-        .map(|w| GpuVec2::new(w.width(), w.height()))
-        .unwrap_or(GpuVec2::new(800.0, 600.0));
-
     let (transform, projection) = camera_params.into_inner();
 
     let camera = GpuCamera::from_transform_and_projection(transform, projection);
@@ -188,14 +171,9 @@ fn spawn_sdf_test(
     let grid_bounds = mesh.compute_aabb().map(GpuBox3::from).unwrap();
     let grid_size = SIZE;
 
-    info!(grid_bounds=?grid_bounds, camera=?camera, screen_resolution=?screen_resolution);
-
     commands.spawn((
         RenderTargetSingle,
-        Mesh3d(meshes.add(
-            Cuboid::from_size(grid_bounds.size().into()),
-            /*Rectangle::from_corners(bbox.min().xy(), bbox.max().xy()),*/
-        )),
+        Mesh3d(meshes.add(Cuboid::from_size(grid_bounds.size().into()))),
         MeshMaterial3d(materials.add(RaymarchMaterial {
             voxel_texture: sdf_buff_handle.unwrap().0.clone(),
             camera,

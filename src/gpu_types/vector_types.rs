@@ -1,3 +1,5 @@
+use std::ops::Index;
+
 use bevy::prelude::*;
 use bevy_app_compute::prelude::ShaderType;
 use bytemuck::{Pod, Zeroable};
@@ -84,6 +86,10 @@ impl GpuVec3 {
         assert!(slice.len() >= 3);
         Self::new(slice[0], slice[1], slice[2])
     }
+
+    pub fn from_array(slice: &[f32; 3]) -> Self {
+        Self::new(slice[0], slice[1], slice[2])
+    }
 }
 
 impl From<GpuVec3> for Vec3 {
@@ -118,6 +124,19 @@ impl From<Dir3> for GpuVec3 {
     fn from(value: Dir3) -> Self {
         Self {
             inner: GpuVec4::new(value.x, value.y, value.z, 0.0),
+        }
+    }
+}
+
+impl Index<usize> for GpuVec3 {
+    type Output = f32;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        match index {
+            0 => &self.inner.x,
+            1 => &self.inner.y,
+            2 => &self.inner.z,
+            _ => panic!("Index out of bounds for GpuVec3"),
         }
     }
 }

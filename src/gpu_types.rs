@@ -4,9 +4,11 @@
 mod box_types;
 mod bvh_types;
 mod camera_type;
+mod polygon_types;
 mod vector_types;
 
 pub(crate) use box_types::GpuBox3;
 pub(crate) use bvh_types::GpuBvhNode;
 pub(crate) use camera_type::GpuCamera;
+pub(crate) use polygon_types::GpuTriangle;
 pub(crate) use vector_types::{GpuUVec3, GpuUVec4, GpuVec2, GpuVec3, GpuVec4};
