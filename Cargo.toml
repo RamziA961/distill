@@ -4,15 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.16.1"
+bevy = { version = "0.16.1", default-features = true }
 bevy_app_compute = "0.16.0"
 bytemuck = "1.23.2"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 strum = { version = "0.27.2", features = ["derive"] }
-
+iyes_perf_ui = { version = "0.5.0", optional = true }
 
 [profile.dev]
 opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[features]
+distill-dev = ["iyes_perf_ui"]
+default = ["distill-dev"]

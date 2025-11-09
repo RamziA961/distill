@@ -6,7 +6,7 @@ use bevy_app_compute::prelude::{
 use bytemuck::{Pod, Zeroable};
 use strum::{AsRefStr, EnumString};
 
-pub const SIZE: u32 = 64;
+pub const SIZE: u32 = 128;
 const WORKGROUP_SIZE: u32 = 8;
 
 #[derive(Debug, EnumString, AsRefStr)]

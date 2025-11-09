@@ -13,6 +13,7 @@ pub enum SnapshotType {
     Occupancy,
     SignedDistance,
     AbsoluteDistance,
+    MaximumIntensity,
 }
 
 pub fn snapshotter(
@@ -34,6 +35,7 @@ pub fn snapshotter(
         SnapshotType::Occupancy => occupancy_visualization(&voxels),
         SnapshotType::SignedDistance => signed_distance_visualization(&voxels),
         SnapshotType::AbsoluteDistance => absolute_distance_visualization(&voxels),
+        SnapshotType::MaximumIntensity => mip_visualization(&voxels),
     }
 
     info!("Saved {} voxel slices to disk", SIZE);
@@ -57,13 +59,13 @@ fn signed_distance_visualization(voxels: &[f32]) {
                 // Normalize value to [-1.0, 1.0]
                 let normalized = (value / abs_max).clamp(-1.0, 1.0);
 
-                // Map negative -> blue, positive -> red
-                let (r, g, b) = if normalized < 0.0 {
-                    let intensity = (-normalized * 255.0) as u8;
-                    (0, 0, intensity) // blue channel
+                // Map negative -> blue, positive -> red, near surface -> green
+                let (r, g, b) = if normalized < -0.01 {
+                    (0, 0, 255) // outside
+                } else if normalized > 0.01 {
+                    (255, 0, 0) // inside
                 } else {
-                    let intensity = (normalized * 255.0) as u8;
-                    (intensity, 0, 0) // red channel
+                    (0, 255, 0) // near surface
                 };
 
                 img.put_pixel(x, y, Rgb([r, g, b]));
@@ -138,4 +140,23 @@ fn occupancy_visualization(voxels: &[f32]) {
         let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
         img.save(p).expect("Failed to save voxel slice image");
     }
+}
+
+fn mip_visualization(voxels: &[f32]) {
+    let mut img = GrayImage::new(SIZE, SIZE);
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let mut max_val: f64 = 0.0;
+            for z in 0..SIZE {
+                let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
+                max_val = max_val.max(voxels[index].abs() as f64);
+            }
+            let pixel_value = ((max_val / 1.0).clamp(0.0, 1.0) * 255.0) as u8;
+            img.put_pixel(x, y, Luma([pixel_value]));
+        }
+    }
+
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("temp/voxel_mip.png");
+    img.save(p).expect("Failed to save MIP image");
 }
