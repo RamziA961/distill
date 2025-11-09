@@ -6,10 +6,6 @@ struct VoxelUniforms {
     size: u32,
 }
 
-struct MeshUniforms {
-    aabb: Box3,
-}
-
 @group(0) @binding(0)
 var<storage, read_write> voxel_texture: array<f32>;
 
@@ -22,15 +18,12 @@ var<storage> bvh_nodes: array<BvhNode>;
 @group(0) @binding(3)
 var<uniform> voxel_uniforms: VoxelUniforms;
 
-@group(0) @binding(4)
-var<uniform> mesh_uniforms: MeshUniforms;
-
 const STACK_SIZE: u32 = 128;
 
 @compute @workgroup_size(8, 8, 8)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let mesh_min = mesh_uniforms.aabb.min;
-    let mesh_extent = mesh_uniforms.aabb.max - mesh_min;
+    let aabb = bvh_nodes[0].aabb;
+    let mesh_extent = aabb.max - aabb.min;
     let size = voxel_uniforms.size;
 
     if (any(id >= vec3<u32>(size, size, size))) {
@@ -41,7 +34,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     // world position of voxel center
     let p_uv = (vec3<f32>(id) + 0.5) / vec3<f32>(size);
-    let p_local = p_uv * mesh_extent + mesh_min;
+    let p_local = p_uv * mesh_extent + aabb.min;
     
     // Closest distance and corresponding triangle normal
     var unsigned_dist = 1e30;
