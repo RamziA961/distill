@@ -20,10 +20,11 @@ struct Camera {
     inv_projection_mat: mat4x4f,
 }
 
+/// Struct representing the result of a ray-AABB intersection
 struct RayHit {
-    t_min: f32, // distance along ray to entry point
-    t_max: f32, // distance along ray to exit point
-    hit: bool,
+    tmin: f32,   // Distance along the ray to the entry point of the AABB
+    tmax: f32,   // Distance along the ray to the exit point of the AABB
+    hit: bool,   // True if the ray intersects the AABB, false otherwise
 }
 
 struct BvhNode {
