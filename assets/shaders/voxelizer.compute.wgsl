@@ -19,6 +19,7 @@ var<storage> bvh_nodes: array<BvhNode>;
 var<uniform> voxel_uniforms: VoxelUniforms;
 
 const STACK_SIZE: u32 = 128;
+const PADDING_RATIO: f32 = 0.05;
 
 struct ClosestResult {
     dist: f32,       // shortest distance found so far
@@ -162,14 +163,21 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (any(id >= vec3<u32>(size, size, size))) {
         return;
     }
+    let root_aabb = bvh_nodes[0].aabb;
+    let mesh_extent = root_aabb.max - root_aabb.min;
 
-    let aabb = bvh_nodes[0].aabb;
-    let mesh_extent = aabb.max - aabb.min;
-    let voxel_index: u32 = id.x + id.y * size + id.z * size * size;
+    let voxel_index = id.x + id.y * size + id.z * size * size;
+
+    // Add padding around the mesh
+    let padding_vec = mesh_extent * PADDING_RATIO;
+    let padded_min = root_aabb.min - padding_vec;
+    let padded_max = root_aabb.max + padding_vec;
+    let padded_extent = padded_max - padded_min;
 
     // World position of voxel center
     let p_uv = (vec3<f32>(id) + 0.5) / vec3<f32>(size);
-    let p_local = p_uv * mesh_extent + aabb.min;
+    // World position of voxel center in padded grid
+    let p_local = p_uv * padded_extent + padded_min;
     
     // Get closest point & normal via BVH
     let result = closest_point_bvh(p_local);
