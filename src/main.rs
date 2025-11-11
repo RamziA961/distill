@@ -12,12 +12,11 @@ use crate::{
 };
 use bevy::{
     asset::RenderAssetUsages,
-    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
+    image::{ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
     prelude::*,
     render::{
         mesh::MeshAabb,
-        render_resource::{AddressMode, Extent3d, FilterMode, TextureDimension, TextureFormat},
-        storage::ShaderStorageBuffer,
+        render_resource::{Extent3d, TextureDimension, TextureFormat},
     },
 };
 use bevy_app_compute::prelude::AppComputeWorker;
@@ -93,12 +92,12 @@ fn spawn_target_mesh(
     commands.spawn((
         VoxelizeMarker,
         Mesh3d(meshes.add(
-            //Sphere::new(1.0),
+            Sphere::new(1.0),
             //Cuboid::new(2.0, 2.0, 2.0),
             //Torus::new(0.5, 1.0),
             //Cone::new(1.0, 3.0),
             //Tetrahedron::default(),
-            Capsule3d::default(),
+            //Capsule3d::default(),
         )),
         MeshMaterial3d(
             materials.add(StandardMaterial::from_color(Color::linear_rgba(

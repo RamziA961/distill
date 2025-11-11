@@ -17,7 +17,6 @@ var<uniform> grid_size: u32;
 var<uniform> grid_bounds: Box3;
 
 const OUT_OF_BOUNDS_DIST: f32 = 1e30;
-const MAX_STEPS = 128u;
 const EPSILON: f32 = 0.5;
 
 // Sample 3D SDF using hardware interpolation and mipmaps
@@ -32,6 +31,13 @@ fn voxel_lookup(p: vec3<f32>, mip: f32) -> f32 {
     );
 }
 
+// Compute dynamic max steps based on ray length and voxel size
+fn compute_max_steps(dir: vec3<f32>, voxel_size: f32, max_dist: f32) -> u32 {
+    // Estimate the number of steps needed across the box
+    let ideal_steps = max_dist / voxel_size;
+    return clamp(u32(ideal_steps), 32u, 256u);
+}
+
 // Raymarch loop with adaptive stepping and mipmap LOD heuristic
 fn raymarch(origin: vec3<f32>, dir: vec3<f32>, voxel_size: f32, max_dist: f32) -> f32 {
     var t = 0.0;
@@ -40,7 +46,9 @@ fn raymarch(origin: vec3<f32>, dir: vec3<f32>, voxel_size: f32, max_dist: f32) -
     var p = origin;
     var d = voxel_lookup(p, 0.0);
 
-    for (var i = 0u; i < MAX_STEPS; i++) {
+    let max_steps = compute_max_steps(dir, voxel_size, max_dist);
+
+    for (var i = 0u; i < max_steps; i++) {
         if (t > max_dist) {
             break;
         }
