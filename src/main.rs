@@ -12,8 +12,13 @@ use crate::{
 };
 use bevy::{
     asset::RenderAssetUsages,
+    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
     prelude::*,
-    render::{mesh::MeshAabb, storage::ShaderStorageBuffer},
+    render::{
+        mesh::MeshAabb,
+        render_resource::{AddressMode, Extent3d, FilterMode, TextureDimension, TextureFormat},
+        storage::ShaderStorageBuffer,
+    },
 };
 use bevy_app_compute::prelude::AppComputeWorker;
 
@@ -51,7 +56,13 @@ fn main() {
 
     app.add_systems(
         Update,
-        (test, extract_sdf, spawn_sdf_test, update_raymarch_material).chain(),
+        (
+            upload_to_gpu,
+            extract_sdf,
+            spawn_sdf_test,
+            update_raymarch_material,
+        )
+            .chain(),
     );
 
     app.run();
@@ -86,8 +97,8 @@ fn spawn_target_mesh(
             //Cuboid::new(2.0, 2.0, 2.0),
             //Torus::new(0.5, 1.0),
             //Cone::new(1.0, 3.0),
-            Tetrahedron::default(),
-            //Capsule3d::default(),
+            //Tetrahedron::default(),
+            Capsule3d::default(),
         )),
         MeshMaterial3d(
             materials.add(StandardMaterial::from_color(Color::linear_rgba(
@@ -99,7 +110,7 @@ fn spawn_target_mesh(
 }
 
 #[allow(clippy::type_complexity)]
-fn test(
+fn upload_to_gpu(
     mut commands: Commands,
     mesh_data: Query<(Entity, &BvhData), (With<VoxelizeMarker>, Without<VoxelizedMarker>)>,
     mut worker: ResMut<AppComputeWorker<VoxelizationWorker>>,
@@ -126,7 +137,7 @@ fn test(
 
 fn extract_sdf(
     mut commands: Commands,
-    mut shader_storage: ResMut<Assets<ShaderStorageBuffer>>,
+    mut images: ResMut<Assets<Image>>,
     worker: Res<AppComputeWorker<VoxelizationWorker>>,
 ) {
     if !worker.ready() {
@@ -143,16 +154,36 @@ fn extract_sdf(
         .read_raw(VoxelVariables::VoxelTexture.as_ref())
         .to_vec();
 
-    let handle = shader_storage.add(ShaderStorageBuffer::new(
-        &buff,
+    let grid_size = SIZE;
+    let extent = Extent3d {
+        width: grid_size,
+        height: grid_size,
+        depth_or_array_layers: grid_size,
+    };
+
+    // Convert to GPU 3D texture
+    let mut image = Image::new(
+        extent,
+        TextureDimension::D3,
+        bytemuck::cast_slice(&buff).to_vec(),
+        TextureFormat::R32Float, // one channel, 32-bit float
         RenderAssetUsages::RENDER_WORLD,
-    ));
+    );
+
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        mipmap_filter: ImageFilterMode::Linear,
+        ..default()
+    });
+
+    let handle = images.add(image);
 
     commands.insert_resource(SdfBufferHandle(handle));
 }
 
 #[derive(Resource, Clone)]
-struct SdfBufferHandle(pub Handle<ShaderStorageBuffer>);
+struct SdfBufferHandle(pub Handle<Image>);
 
 #[derive(Component, Clone)]
 struct RenderTargetSingle;
