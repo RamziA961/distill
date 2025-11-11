@@ -3,6 +3,9 @@ struct Triangle {
     a: vec3<f32>,
     b: vec3<f32>,
     c: vec3<f32>,
+    na: vec3<f32>,
+    nb: vec3<f32>,
+    nc: vec3<f32>,
 }
 
 struct Box3 {

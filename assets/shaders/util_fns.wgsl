@@ -49,6 +49,49 @@ fn ray_triangle_intersect(origin: vec3<f32>, direction: vec3<f32>, a: vec3<f32>,
     return true;
 }
 
+// Ray-AABB intersection using slab method
+fn ray_aabb_intersect(origin: vec3<f32>, dir: vec3<f32>, min: vec3<f32>, max: vec3<f32>) -> bool {
+    let inv_dir = 1.0 / dir;
+
+    var tmin = (min.x - origin.x) * inv_dir.x;
+    var tmax = (max.x - origin.x) * inv_dir.x;
+
+    if (tmin > tmax) { 
+        let tmp = tmin; 
+        tmin = tmax; 
+        tmax = tmp; 
+    }
+
+    var tymin = (min.y - origin.y) * inv_dir.y;
+    var tymax = (max.y - origin.y) * inv_dir.y;
+    if (tymin > tymax) { 
+        let tmp = tymin; 
+        tymin = tymax; 
+        tymax = tmp; 
+    }
+
+    if ((tmin > tymax) || (tymin > tmax)) { 
+        return false; 
+    }
+
+    tmin = max(tmin, tymin);
+    tmax = min(tmax, tymax);
+
+    var tzmin = (min.z - origin.z) * inv_dir.z;
+    var tzmax = (max.z - origin.z) * inv_dir.z;
+    if (tzmin > tzmax) { 
+        let tmp = tzmin; 
+        tzmin = tzmax; 
+        tzmax = tmp; 
+    }
+
+    if ((tmin > tzmax) || (tzmin > tmax)) { 
+        return false; 
+    }
+
+    return true;
+}
+
 // Utility function to calculate triangle normal (assuming consistent winding)
 fn calculate_triangle_normal(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec3<f32> {
     return normalize(cross(b - a, c - a));

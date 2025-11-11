@@ -1,5 +1,5 @@
 #import "shaders/distance_fns.wgsl"::{distance_to_aabb, closest_point_on_triangle};
-#import "shaders/util_fns.wgsl"::calculate_triangle_normal;
+#import "shaders/util_fns.wgsl"::{ray_aabb_intersect, ray_triangle_intersect};
 #import "shaders/common_types.wgsl"::{Box3, BvhNode, Triangle};
 
 struct VoxelUniforms {
@@ -55,13 +55,18 @@ fn closest_point_bvh(p_local: vec3<f32>) -> ClosestResult {
                 let tri_idx = node.left_index + i;
                 let tri = triangles[tri_idx];
 
-                let curr_pt = closest_point_on_triangle(p_local, tri.a, tri.b, tri.c);
-                let dist = length(curr_pt - p_local);
+                let result = closest_point_on_triangle(p_local, tri.a, tri.b, tri.c);
+                let dist = length(result.point - p_local);
 
                 if (dist < best.dist) {
                     best.dist = dist;
-                    best.point = curr_pt;
-                    best.normal = calculate_triangle_normal(tri.a, tri.b, tri.c);
+                    best.point = result.point;
+
+                    best.normal = normalize(
+                        tri.na * result.barycentric.x +
+                        tri.nb * result.barycentric.y +
+                        tri.nc * result.barycentric.z
+                    );
                 }
             }
         } else {
@@ -91,16 +96,54 @@ fn closest_point_bvh(p_local: vec3<f32>) -> ClosestResult {
     return best;
 }
 
+// Raycast-based inside/outside test
+fn is_inside(p: vec3<f32>) -> bool {
+    var count: u32 = 0u;
+    let ray_dir = vec3<f32>(1.0, 0.0, 0.0);
+
+    var stack: array<u32, STACK_SIZE>;
+    var stack_ptr = 1u;
+    stack[0] = 0u;
+
+    loop {
+        if (stack_ptr == 0u) { break; }
+        stack_ptr -= 1u;
+        let node = bvh_nodes[stack[stack_ptr]];
+
+        if (!ray_aabb_intersect(p, ray_dir, node.aabb.min, node.aabb.max)) {
+            continue;
+        }
+
+        if (node.triangle_count > 0u) {
+            for (var i = 0u; i < node.triangle_count; i++) {
+                let tri = triangles[node.left_index + i];
+                if (ray_triangle_intersect(p, ray_dir, tri.a, tri.b, tri.c)) {
+                    count += 1u;
+                }
+            }
+        } else {
+            if (stack_ptr + 2u > STACK_SIZE) { 
+                continue; 
+            }
+            stack[stack_ptr] = node.left_index;
+            stack[stack_ptr + 1u] = node.right_index;
+            stack_ptr += 2u;
+        }
+    }
+
+    return (count % 2u) == 1u;
+}
+
+
 @compute @workgroup_size(8, 8, 8)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let aabb = bvh_nodes[0].aabb;
-    let mesh_extent = aabb.max - aabb.min;
     let size = voxel_uniforms.size;
-
     if (any(id >= vec3<u32>(size, size, size))) {
         return;
     }
 
+    let aabb = bvh_nodes[0].aabb;
+    let mesh_extent = aabb.max - aabb.min;
     let voxel_index: u32 = id.x + id.y * size + id.z * size * size;
 
     // world position of voxel center
@@ -109,15 +152,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     
     // Get closest point & normal via BVH
     let result = closest_point_bvh(p_local);
-
-    // Sign determination using closest normal
-    // For a point P and its closest point on the surface (closest_p_on_tri) with normal (closest_normal)
-    // if dot(P - closest_p_on_tri, closest_normal) > 0, P is outside, else inside.
-    let vec_to_surface = p_local - result.point;
-    let sign_dot_product = dot(vec_to_surface, result.normal);
-    // Use >= to handle points exactly on the surface as outside
-    let si = select(-1.0, 1.0, sign_dot_product >= 0.0);
-
+    let inside = is_inside(p_local);
+    
+    let si = select(1.0, -1.0, inside);
     let value = result.dist * si;
     voxel_texture[voxel_index] = value;
 }
