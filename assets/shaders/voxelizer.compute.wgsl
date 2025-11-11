@@ -1,5 +1,5 @@
 #import "shaders/distance_fns.wgsl"::{distance_to_aabb, closest_point_on_triangle};
-#import "shaders/util_fns.wgsl"::calculate_triangle_normal;
+#import "shaders/util_fns.wgsl"::{ray_aabb_intersect, ray_triangle_intersect};
 #import "shaders/common_types.wgsl"::{Box3, BvhNode, Triangle};
 
 struct VoxelUniforms {
@@ -21,62 +21,77 @@ var<uniform> voxel_uniforms: VoxelUniforms;
 const STACK_SIZE: u32 = 128;
 
 struct ClosestResult {
-    dist: f32,
-    point: vec3<f32>,
-    normal: vec3<f32>,
+    dist: f32,       // shortest distance found so far
+    point: vec3<f32>, // closest point on the surface
+    normal: vec3<f32>, // interpolated normal at closest point
 };
 
-/// Traverse BVH and return closest point + distance + normal
+/// Traverse a BVH to find the closest point on the mesh to `p_local`.
+/// Returns a `ClosestResult` with the shortest distance, the closest point,
+/// and the normal interpolated from the triangle vertices.
+///
+/// Performs early AABB culling to skip branches that cannot yield a closer point.
 fn closest_point_bvh(p_local: vec3<f32>) -> ClosestResult {
+    // Initialize best result with a very large distance
     var best = ClosestResult(1e30, vec3<f32>(0.0), vec3<f32>(0.0));
 
+    // Stack for iterative traversal
     var stack: array<u32, STACK_SIZE>;
     var stack_ptr = 1u;
-    stack[0] = 0u; // root node
+    stack[0] = 0u; // start with root node
 
     loop {
         if (stack_ptr == 0u) {
-            break;
+            break; // finished traversal
         }
 
+        // Pop node from stack
         stack_ptr -= 1u;
         let node_index = stack[stack_ptr];
         let node = bvh_nodes[node_index];
 
-        // Early skip if AABB is farther than current best
+        // Early AABB culling: skip this node if its closest point is farther than the current best
         let dmin = distance_to_aabb(p_local, node.aabb.min, node.aabb.max);
         if (dmin > best.dist) {
             continue;
         }
 
         if (node.triangle_count > 0u) {
-            // Leaf node
+            // Leaf node: test all triangles
             for (var i = 0u; i < node.triangle_count; i++) {
                 let tri_idx = node.left_index + i;
                 let tri = triangles[tri_idx];
 
-                let curr_pt = closest_point_on_triangle(p_local, tri.a, tri.b, tri.c);
-                let dist = length(curr_pt - p_local);
+                // Compute closest point on triangle
+                let result = closest_point_on_triangle(p_local, tri.a, tri.b, tri.c);
+                let dist = length(result.point - p_local);
 
+                // Update best result if closer
                 if (dist < best.dist) {
                     best.dist = dist;
-                    best.point = curr_pt;
-                    best.normal = calculate_triangle_normal(tri.a, tri.b, tri.c);
+                    best.point = result.point;
+                    // Interpolate normal from vertex normals using barycentric coordinates
+                    best.normal = normalize(
+                        tri.na * result.barycentric.x +
+                        tri.nb * result.barycentric.y +
+                        tri.nc * result.barycentric.z
+                    );
                 }
             }
         } else {
-            // Internal node
+            // Internal node: push children onto the stack
             if (stack_ptr + 2u > STACK_SIZE) {
-                continue;
+                continue; // avoid stack overflow
             }
 
             let left = node.left_index;
             let right = node.right_index;
 
+            // Compute minimum distances to children
             let dleft = distance_to_aabb(p_local, bvh_nodes[left].aabb.min, bvh_nodes[left].aabb.max);
             let dright = distance_to_aabb(p_local, bvh_nodes[right].aabb.min, bvh_nodes[right].aabb.max);
 
-            // Push farther first so nearer pops next
+            // Push the farther child first so the nearer child is processed next
             if (dleft < dright) {
                 stack[stack_ptr] = right;
                 stack[stack_ptr + 1u] = left;
@@ -91,33 +106,76 @@ fn closest_point_bvh(p_local: vec3<f32>) -> ClosestResult {
     return best;
 }
 
+/// Raycast-based inside/outside test using the "odd-even rule":
+/// Cast a ray in the +X direction from point `p`.
+/// Count the number of intersections with triangles.
+/// - Odd count -> point is inside
+/// - Even count -> point is outside
+///
+/// Uses the same BVH structure for efficient ray intersection testing.
+fn is_inside(p: vec3<f32>) -> bool {
+    var count: u32 = 0u; // number of ray-triangle intersections
+    let ray_dir = vec3<f32>(1.0, 0.5, 0.3); // ray direction along +X
+
+    var stack: array<u32, STACK_SIZE>;
+    var stack_ptr = 1u;
+    stack[0] = 0u; // start with root node
+
+    loop {
+        if (stack_ptr == 0u) { 
+            break; // finished traversal
+        }
+        stack_ptr -= 1u;
+        let node = bvh_nodes[stack[stack_ptr]];
+
+        // Skip this node if ray does not intersect the node's AABB
+        if (!ray_aabb_intersect(p, ray_dir, node.aabb).hit) {
+            continue;
+        }
+
+        if (node.triangle_count > 0u) {
+            // Leaf node: test all triangles for ray intersection
+            for (var i = 0u; i < node.triangle_count; i++) {
+                let tri = triangles[node.left_index + i];
+                if (ray_triangle_intersect(p, ray_dir, tri.a, tri.b, tri.c).hit) {
+                    count += 1u;
+                }
+            }
+        } else {
+            // Internal node: push children onto stack
+            if (stack_ptr + 2u > STACK_SIZE) { 
+                continue; // avoid stack overflow
+            }
+            stack[stack_ptr] = node.left_index;
+            stack[stack_ptr + 1u] = node.right_index;
+            stack_ptr += 2u;
+        }
+    }
+
+    // Inside if intersection count is odd
+    return (count % 2u) == 1u;
+}
+
 @compute @workgroup_size(8, 8, 8)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let aabb = bvh_nodes[0].aabb;
-    let mesh_extent = aabb.max - aabb.min;
     let size = voxel_uniforms.size;
-
     if (any(id >= vec3<u32>(size, size, size))) {
         return;
     }
 
+    let aabb = bvh_nodes[0].aabb;
+    let mesh_extent = aabb.max - aabb.min;
     let voxel_index: u32 = id.x + id.y * size + id.z * size * size;
 
-    // world position of voxel center
+    // World position of voxel center
     let p_uv = (vec3<f32>(id) + 0.5) / vec3<f32>(size);
     let p_local = p_uv * mesh_extent + aabb.min;
     
     // Get closest point & normal via BVH
     let result = closest_point_bvh(p_local);
-
-    // Sign determination using closest normal
-    // For a point P and its closest point on the surface (closest_p_on_tri) with normal (closest_normal)
-    // if dot(P - closest_p_on_tri, closest_normal) > 0, P is outside, else inside.
-    let vec_to_surface = p_local - result.point;
-    let sign_dot_product = dot(vec_to_surface, result.normal);
-    // Use >= to handle points exactly on the surface as outside
-    let si = select(-1.0, 1.0, sign_dot_product >= 0.0);
-
+    let inside = is_inside(p_local);
+    
+    let si = select(1.0, -1.0, inside);
     let value = result.dist * si;
     voxel_texture[voxel_index] = value;
 }

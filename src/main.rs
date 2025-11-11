@@ -85,9 +85,9 @@ fn spawn_target_mesh(
             //Sphere::new(1.0),
             //Cuboid::new(2.0, 2.0, 2.0),
             //Torus::new(0.5, 1.0),
-            //Cone::new(1.0, 1.0),
-            //Tetrahedron::default(),
-            Capsule3d::default(),
+            //Cone::new(1.0, 3.0),
+            Tetrahedron::default(),
+            //Capsule3d::default(),
         )),
         MeshMaterial3d(
             materials.add(StandardMaterial::from_color(Color::linear_rgba(

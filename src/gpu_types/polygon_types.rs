@@ -9,11 +9,21 @@ pub struct GpuTriangle {
     a: GpuVec3,
     b: GpuVec3,
     c: GpuVec3,
+    na: GpuVec3,
+    nb: GpuVec3,
+    nc: GpuVec3,
 }
 
 impl GpuTriangle {
-    pub fn new(a: GpuVec3, b: GpuVec3, c: GpuVec3) -> Self {
-        Self { a, b, c }
+    pub fn new(a: GpuVec3, b: GpuVec3, c: GpuVec3, na: GpuVec3, nb: GpuVec3, nc: GpuVec3) -> Self {
+        Self {
+            a,
+            b,
+            c,
+            na,
+            nb,
+            nc,
+        }
     }
 
     pub fn a(&self) -> &GpuVec3 {
@@ -26,6 +36,18 @@ impl GpuTriangle {
 
     pub fn c(&self) -> &GpuVec3 {
         &self.c
+    }
+
+    pub fn na(&self) -> &GpuVec3 {
+        &self.na
+    }
+
+    pub fn nb(&self) -> &GpuVec3 {
+        &self.nb
+    }
+
+    pub fn nc(&self) -> &GpuVec3 {
+        &self.nc
     }
 
     pub fn centroid(&self) -> GpuVec3 {

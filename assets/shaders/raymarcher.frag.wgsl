@@ -1,5 +1,5 @@
 #import "shaders/common_types.wgsl"::{Box3, Camera}
-#import "shaders/util_fns.wgsl"::intersect_box
+#import "shaders/util_fns.wgsl"::ray_aabb_intersect
 
 @group(2) @binding(0)
 var<storage, read> voxel_texture: array<f32>;
@@ -121,8 +121,8 @@ fn fragment(
     let dir = normalize(world_position.xyz - camera_position);
 
     // Intersect with the cube bounding the SDF
-    let hit = intersect_box(camera_position, dir, grid_bounds);
-    if (!hit.hit) {
+    let result = ray_aabb_intersect(camera_position, dir, grid_bounds);
+    if (!result.hit) {
         return vec4<f32>(0.0); // background
     }
     
@@ -130,7 +130,7 @@ fn fragment(
     let eps = max(max(voxel_extent.x, voxel_extent.y), voxel_extent.z) * 0.6;
 
     // Raymarch inside bounds
-    let start = camera_position + dir * max(hit.t_min, 0.0);
+    let start = camera_position + dir * max(result.tmin, 0.0);
 
     let t = raymarch(start, dir, eps);
     if (t < 0.0) {
