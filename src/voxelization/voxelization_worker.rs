@@ -60,6 +60,7 @@ impl ComputeWorker for VoxelizationWorker {
                     VoxelVariables::VoxelUniforms.as_ref(),
                 ],
             )
+            .one_shot()
             .build()
     }
 }

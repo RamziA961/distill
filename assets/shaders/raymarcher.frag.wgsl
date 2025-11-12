@@ -2,112 +2,94 @@
 #import "shaders/util_fns.wgsl"::ray_aabb_intersect
 
 @group(2) @binding(0)
-var<storage, read> voxel_texture: array<f32>;
+var voxel_texture: texture_3d<f32>;
 
 @group(2) @binding(1)
-var<uniform> camera: Camera;
+var voxel_sampler: sampler;
 
 @group(2) @binding(2)
-var<uniform> grid_size: u32;
+var<uniform> camera: Camera;
 
 @group(2) @binding(3)
+var<uniform> grid_size: u32;
+
+@group(2) @binding(4)
 var<uniform> grid_bounds: Box3;
 
 const OUT_OF_BOUNDS_DIST: f32 = 1e30;
-const MAX_STEPS = 128u;
+const EPSILON: f32 = 0.5;
 
-// Trilinear lookup, returns OUT_OF_BOUNDS_DIST if p outside grid
-fn voxel_lookup_trilinear(p: vec3<f32>) -> f32 {
+// Sample 3D SDF using hardware interpolation and mipmaps
+fn voxel_lookup(p: vec3<f32>, mip: f32) -> f32 {
     let extent = grid_bounds.max - grid_bounds.min;
     let rel = (p - grid_bounds.min) / extent;
 
-    if (any(rel < vec3<f32>(0.0)) || any(rel > vec3<f32>(1.0))) {
-        return OUT_OF_BOUNDS_DIST;
-    }
-
-    let uvw = rel;
-
-    // Continuous Index in [0, grid_size-1]
-    let fsize = f32(grid_size - 1u);
-    let fx = uvw.x * fsize;
-    let fy = uvw.y * fsize;
-    let fz = uvw.z * fsize;
-
-    let ix = u32(fx);
-    let iy = u32(fy);
-    let iz = u32(fz);
-
-    let wx = fx - floor(fx);
-    let wy = fy - floor(fy);
-    let wz = fz - floor(fz);
-
-    // Clamp indices to valid range for sampling corners
-    let ix1 = min(ix + 1u, grid_size - 1u);
-    let iy1 = min(iy + 1u, grid_size - 1u);
-    let iz1 = min(iz + 1u, grid_size - 1u);
-    
-
-    // Flattened indices
-    let s000 = voxel_texture[ix + iy * grid_size + iz * grid_size * grid_size];
-    let s100 = voxel_texture[ix1 + iy * grid_size + iz * grid_size * grid_size];
-    let s010 = voxel_texture[ix + iy1 * grid_size + iz * grid_size * grid_size];
-    let s110 = voxel_texture[ix1 + iy1 * grid_size + iz * grid_size * grid_size];
-    let s001 = voxel_texture[ix + iy * grid_size + iz1 * grid_size * grid_size];
-    let s101 = voxel_texture[ix1 + iy * grid_size + iz1 * grid_size * grid_size];
-    let s011 = voxel_texture[ix + iy1 * grid_size + iz1 * grid_size * grid_size];
-    let s111 = voxel_texture[ix1 + iy1 * grid_size + iz1 * grid_size * grid_size];
-
-    // Trilinear interpolation
-    // Lerp in x
-    let c00 = mix(s000, s100, wx);
-    let c10 = mix(s010, s110, wx);
-    let c01 = mix(s001, s101, wx);
-    let c11 = mix(s011, s111, wx);
-
-    // Lerp in y
-    let c0 = mix(c00, c10, wy);
-    let c1 = mix(c01, c11, wy);
-
-    // Lerp in z
-    return mix(c0, c1, wz);
+    return select(
+        textureSampleLevel(voxel_texture, voxel_sampler, rel, mip).r,
+        OUT_OF_BOUNDS_DIST,
+        any(rel < vec3<f32>(0.0)) || any(rel > vec3<f32>(1.0))
+    );
 }
 
-
-// Safe lookup with out-of-bounds handling
-fn voxel_lookup_safe(p: vec3<f32>) -> f32 {
-    let d = voxel_lookup_trilinear(p);
-    // NaN defense at lookup level (prevents invalid math early)
-    return select(d, OUT_OF_BOUNDS_DIST, d != d);
+// Compute dynamic max steps based on ray length and voxel size
+fn compute_max_steps(dir: vec3<f32>, voxel_size: f32, max_dist: f32) -> u32 {
+    // Estimate the number of steps needed across the box
+    let ideal_steps = max_dist / voxel_size;
+    return clamp(u32(ideal_steps), 32u, 256u);
 }
 
-// Raymarch loop
-fn raymarch(origin: vec3<f32>, dir: vec3<f32>, eps: f32) -> f32 {
+// Raymarch loop with adaptive stepping and mipmap LOD heuristic
+fn raymarch(origin: vec3<f32>, dir: vec3<f32>, voxel_size: f32, max_dist: f32) -> f32 {
     var t = 0.0;
-    let max_dist = length(grid_bounds.max - grid_bounds.min);
 
-    for (var i = 0u; i < MAX_STEPS; i++) {
-        let p = origin + dir * t;
-        let d = voxel_lookup_safe(p);
-    
-        // skip invalid or huge distances
+    // Sample at start point
+    var p = origin;
+    var d = voxel_lookup(p, 0.0);
+
+    let max_steps = compute_max_steps(dir, voxel_size, max_dist);
+
+    for (var i = 0u; i < max_steps; i++) {
+        if (t > max_dist) {
+            break;
+        }
+
         if (d >= OUT_OF_BOUNDS_DIST * 0.1) {
-            t += eps * 2.0;
-            if (t > max_dist) { 
-                break; 
-            }
+            // skip large empty space faster
+            t += voxel_size * 2.0;
+            p = origin + dir * t;
+            d = voxel_lookup(p, 0.0);
             continue;
         }
 
-        if (d < eps) {
-            return t; // hit
+        if (d < voxel_size * EPSILON) {
+            // Hit detected – refine using binary search for precision
+            var t_back = t - voxel_size;
+            for (var j = 0u; j < 3u; j++) {
+                let t_mid = 0.5 * (t + t_back);
+                let p_mid = origin + dir * t_mid;
+                let d_mid = voxel_lookup(p_mid, 0.0);
+                if (d_mid < 0.0) {
+                    t = t_mid;
+                } else {
+                    t_back = t_mid;
+                }
+            }
+            return t;
         }
 
-        t += d;
-        if (t > max_dist) {
-            break; // escaped
-        }
+        // Adaptive mip-level: coarser far away, finer near surface
+        let mip = clamp(log2(d / voxel_size), 0.0, 4.0);
+
+        // Adaptive step size: larger far away, smaller near surface
+        let step = max(d, voxel_size * 0.5);
+
+        // Precompute next sample point and next distance (fused iteration)
+        t += step;
+        p = origin + dir * t;
+        d = voxel_lookup(p, mip);
     }
-    return -1.0; // miss
+
+    return -1.0;
 }
 
 @fragment
@@ -126,25 +108,37 @@ fn fragment(
         return vec4<f32>(0.0); // background
     }
     
-    let voxel_extent = (grid_bounds.max - grid_bounds.min) / f32(grid_size);
-    let eps = max(max(voxel_extent.x, voxel_extent.y), voxel_extent.z) * 0.6;
+    // Start and end distances inside the box
+    let start_t = max(result.tmin, 0.0);
+    let end_t = result.tmax;
+    let max_dist = end_t - start_t;
 
-    // Raymarch inside bounds
-    let start = camera_position + dir * max(result.tmin, 0.0);
+    // Start point inside bounds
+    let start = camera_position + dir * start_t;
 
-    let t = raymarch(start, dir, eps);
+    let voxel_size = max(
+        max(
+            (grid_bounds.max - grid_bounds.min).x,
+            (grid_bounds.max - grid_bounds.min).y
+        ),
+        (grid_bounds.max - grid_bounds.min).z
+    ) / f32(grid_size);
+
+    let t = raymarch(start, dir, voxel_size, max_dist);
     if (t < 0.0) {
         return vec4<f32>(0.0); // miss inside cube
     }
-    
-    // Compute normal by central difference
+
+    let eps = voxel_size * 0.5;
+
     let p = start + dir * t;
+    // Compute normal by fast central difference
     let n = normalize(vec3<f32>(
-        voxel_lookup_safe(p + vec3<f32>(eps, 0.0, 0.0)) - voxel_lookup_safe(p - vec3<f32>(eps, 0.0, 0.0)),
-        voxel_lookup_safe(p + vec3<f32>(0.0, eps, 0.0)) - voxel_lookup_safe(p - vec3<f32>(0.0, eps, 0.0)),
-        voxel_lookup_safe(p + vec3<f32>(0.0, 0.0, eps)) - voxel_lookup_safe(p - vec3<f32>(0.0, 0.0, eps))
+        voxel_lookup(p + vec3<f32>(eps, 0.0, 0.0), 0.0) - voxel_lookup(p - vec3<f32>(eps, 0.0, 0.0), 0.0),
+        voxel_lookup(p + vec3<f32>(0.0, eps, 0.0), 0.0) - voxel_lookup(p - vec3<f32>(0.0, eps, 0.0), 0.0),
+        voxel_lookup(p + vec3<f32>(0.0, 0.0, eps), 0.0) - voxel_lookup(p - vec3<f32>(0.0, 0.0, eps), 0.0)
     ));
 
-    return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+    return vec4<f32>(n, 1.0);
 }
 

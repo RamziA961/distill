@@ -1,12 +1,11 @@
 use std::path::Path;
 
 use bevy::prelude::*;
-use bevy_app_compute::prelude as compute;
 use image::{GrayImage, Luma, Rgb, RgbImage};
 
-use crate::voxelization::voxelization_worker::{SIZE, VoxelVariables, VoxelizationWorker};
+use crate::voxelization::{VoxelizationData, VoxelizationState, voxelization_worker::SIZE};
 
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Clone, Debug, Default)]
 #[allow(dead_code)]
 pub enum SnapshotType {
     #[default]
@@ -19,26 +18,57 @@ pub enum SnapshotType {
 pub fn snapshotter(
     input: Res<ButtonInput<KeyCode>>,
     snapshot_type: Res<SnapshotType>,
-    worker: Res<compute::AppComputeWorker<VoxelizationWorker>>,
+    voxel_query: Query<(Entity, &VoxelizationData), ()>,
+    images: Res<Assets<Image>>,
 ) {
-    if !worker.ready() {
-        return;
-    }
-
     if !input.just_pressed(KeyCode::KeyC) {
         return;
     }
 
-    let voxels = worker.read_vec::<f32>(VoxelVariables::VoxelTexture.as_ref());
+    for (entity, voxel_data) in voxel_query.iter() {
+        if voxel_data.state != VoxelizationState::Computed {
+            warn!(
+                "Voxelization for entity {:?} is not yet computed. Skipping snapshot.",
+                entity
+            );
+            continue;
+        }
 
-    match snapshot_type.into_inner() {
-        SnapshotType::Occupancy => occupancy_visualization(&voxels),
-        SnapshotType::SignedDistance => signed_distance_visualization(&voxels),
-        SnapshotType::AbsoluteDistance => absolute_distance_visualization(&voxels),
-        SnapshotType::MaximumIntensity => mip_visualization(&voxels),
+        let Some(voxel_info) = &voxel_data.data else {
+            error!(
+                "Entity {:?} has Computed state but missing SignedDistanceFieldData!",
+                entity
+            );
+            continue;
+        };
+
+        let Some(image) = images.get(&voxel_info.signed_distance_field) else {
+            error!(
+                "Image asset for entity {:?} not found in Assets<Image>!",
+                entity
+            );
+            continue;
+        };
+
+        let Some(raw_data) = &image.data else {
+            error!(
+                "Image for entity {:?} has no CPU-accessible data (likely GPU-only).",
+                entity
+            );
+            continue;
+        };
+
+        let voxels: &[f32] = bytemuck::cast_slice(raw_data);
+
+        match snapshot_type.as_ref() {
+            SnapshotType::Occupancy => occupancy_visualization(voxels),
+            SnapshotType::SignedDistance => signed_distance_visualization(voxels),
+            SnapshotType::AbsoluteDistance => absolute_distance_visualization(voxels),
+            SnapshotType::MaximumIntensity => mip_visualization(voxels),
+        }
+
+        info!("Saved {} voxel slices to disk", SIZE);
     }
-
-    info!("Saved {} voxel slices to disk", SIZE);
 }
 
 fn signed_distance_visualization(voxels: &[f32]) {
