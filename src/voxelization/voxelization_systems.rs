@@ -5,6 +5,7 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use bevy_app_compute::prelude::AppComputeWorker;
+use tracing::instrument;
 
 use crate::{
     bvh::BvhData,
@@ -15,14 +16,21 @@ use crate::{
 };
 
 #[allow(clippy::type_complexity)]
+#[instrument(skip_all)]
 pub(super) fn queue_voxelization(
     mut commands: Commands,
     mesh_data: Query<(Entity, &BvhData), (With<VoxelizeMarker>, Without<VoxelizationData>)>,
     mut worker: ResMut<AppComputeWorker<VoxelizationWorker>>,
 ) {
-    if mesh_data.is_empty() || !worker.ready() {
+    if mesh_data.is_empty() {
+        trace!("No meshes to voxelize.");
         return;
     }
+
+    info!(
+        mesh_count = mesh_data.iter().count(),
+        "Starting voxelization queue."
+    );
 
     if let Some((entity, bvh_data)) = mesh_data.iter().next() {
         info!("Uploading mesh {entity:?} to GPU.");
@@ -34,26 +42,30 @@ pub(super) fn queue_voxelization(
 
         worker.write_slice(VoxelVariables::Triangles.as_ref(), &bvh_data.triangles);
         worker.write_slice(VoxelVariables::BvhNodes.as_ref(), &bvh_data.nodes);
+        info!("Starting voxelization for entity {entity:?}.");
 
         commands.entity(entity).insert(VoxelizationData {
             state: VoxelizationState::InProgress,
             data: None,
         });
+
+        worker.execute();
     }
 }
 
+#[instrument(skip_all)]
 pub(super) fn extract_voxelization_data(
     mut images: ResMut<Assets<Image>>,
     worker: ResMut<AppComputeWorker<VoxelizationWorker>>,
     mut query: Query<(Entity, &mut VoxelizationData), With<VoxelizeMarker>>,
 ) {
     if !worker.ready() {
-        warn!("Worker is not ready!");
+        trace!("Worker is not ready!");
         return;
     }
 
     if !worker.is_changed() {
-        trace!("Worker has not changed. Skipping read.");
+        info!("Worker has not changed. Skipping read.");
         return;
     }
     for (entity, mut voxel_data) in query.iter_mut() {

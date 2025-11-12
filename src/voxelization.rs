@@ -14,26 +14,25 @@ pub struct VoxelizationPlugin;
 
 impl Plugin for VoxelizationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(compute::AppComputePlugin);
-        app.add_plugins(compute::AppComputeWorkerPlugin::<
-            voxelization_worker::VoxelizationWorker,
-        >::default());
-
-        app.add_plugins(MaterialPlugin::<RaymarchMaterial>::default());
-
-        app.insert_resource(SnapshotType::SignedDistance);
-        app.add_systems(Update, snapshot::snapshotter);
+        app.add_plugins((
+            compute::AppComputePlugin,
+            compute::AppComputeWorkerPlugin::<voxelization_worker::VoxelizationWorker>::default(),
+            MaterialPlugin::<RaymarchMaterial>::default(),
+        ));
 
         app.add_systems(
             Update,
             (
-                voxelization_systems::queue_voxelization,
                 voxelization_systems::extract_voxelization_data,
-                //raymarch_systems::spawn_raymarch_render_targets,
-                //raymarch_systems::update_raymarch_materials,
+                voxelization_systems::queue_voxelization,
+                raymarch_systems::spawn_raymarch_render_targets,
+                raymarch_systems::update_raymarch_materials,
             )
                 .chain(),
         );
+
+        app.insert_resource(SnapshotType::SignedDistance);
+        app.add_systems(Update, snapshot::snapshotter);
     }
 }
 

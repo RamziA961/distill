@@ -37,6 +37,7 @@ fn main() {
     // window and cursor controls
     app.add_systems(Startup, (window::grab_cursor, window::hide_cursor));
     app.add_systems(Update, window::toggle_cursor);
+
     app.add_systems(Startup, spawn_target_mesh);
 
     app.run();
