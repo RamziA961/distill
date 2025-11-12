@@ -1,7 +1,6 @@
-use bevy::prelude::*;
+use crate::voxelization::{raymarch_material::RaymarchMaterialExtension, snapshot::SnapshotType};
+use bevy::{pbr::ExtendedMaterial, prelude::*};
 use bevy_app_compute::prelude as compute;
-
-use crate::voxelization::{raymarch_material::RaymarchMaterial, snapshot::SnapshotType};
 
 mod raymarch;
 pub mod raymarch_material;
@@ -17,7 +16,7 @@ impl Plugin for VoxelizationPlugin {
         app.add_plugins((
             compute::AppComputePlugin,
             compute::AppComputeWorkerPlugin::<voxelization_worker::VoxelizationWorker>::default(),
-            MaterialPlugin::<RaymarchMaterial>::default(),
+            MaterialPlugin::<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>::default()
         ));
 
         app.add_systems(

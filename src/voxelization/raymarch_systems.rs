@@ -3,17 +3,15 @@ use crate::{
     gpu_types::{GpuBox3, GpuCamera},
     voxelization::{
         VoxelizationData, VoxelizationState, VoxelizeTargetMarker, raymarch::RaymarchRenderTarget,
-        voxelization_worker::SIZE,
+        raymarch_material::RaymarchMaterialExtension, voxelization_worker::SIZE,
     },
 };
-use bevy::{prelude::*, render::mesh::MeshAabb};
-
-use super::raymarch_material::RaymarchMaterial;
+use bevy::{pbr::ExtendedMaterial, prelude::*, render::mesh::MeshAabb};
 
 pub(super) fn spawn_raymarch_render_targets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<RaymarchMaterial>>,
+    mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>>,
     voxel_query: Query<(Entity, &Mesh3d, &VoxelizationData), With<VoxelizeTargetMarker>>,
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
     existing_targets: Query<&RaymarchRenderTarget>,
@@ -56,11 +54,25 @@ pub(super) fn spawn_raymarch_render_targets(
                 source_entity: entity,
             },
             Mesh3d(meshes.add(Cuboid::from_size(grid_bounds.size().into()))),
-            MeshMaterial3d(materials.add(RaymarchMaterial {
-                voxel_texture: sdf_handle,
-                camera,
-                grid_bounds,
-                grid_size,
+            //MeshMaterial3d(materials.add(RaymarchMaterial {
+            //    voxel_texture: sdf_handle,
+            //    camera,
+            //    grid_bounds,
+            //    grid_size,
+            //})),
+            MeshMaterial3d(materials.add(ExtendedMaterial {
+                base: StandardMaterial {
+                    base_color: Color::linear_rgba(1.0, 0.0, 0.0, 1.0),
+                    alpha_mode: AlphaMode::Blend,
+                    unlit: false,
+                    ..Default::default()
+                },
+                extension: RaymarchMaterialExtension {
+                    voxel_texture: sdf_handle,
+                    camera,
+                    grid_size,
+                    grid_bounds,
+                },
             })),
             Transform::from_translation(grid_bounds.center().into()),
         ));
@@ -68,8 +80,11 @@ pub(super) fn spawn_raymarch_render_targets(
 }
 
 pub(super) fn update_raymarch_materials(
-    mut materials: ResMut<Assets<RaymarchMaterial>>,
-    targets: Query<(&RaymarchRenderTarget, &MeshMaterial3d<RaymarchMaterial>)>,
+    mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>>,
+    targets: Query<(
+        &RaymarchRenderTarget,
+        &MeshMaterial3d<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>,
+    )>,
     _voxel_sources: Query<&VoxelizationData, With<VoxelizeTargetMarker>>,
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
 ) {
@@ -78,7 +93,7 @@ pub(super) fn update_raymarch_materials(
 
     for (_, material_handle) in targets.iter() {
         if let Some(material) = materials.get_mut(material_handle) {
-            material.camera = camera;
+            material.extension.camera = camera;
 
             //if let Ok(voxel_data) = voxel_sources.get(target.source_entity) {
             //    if let Some(sdf_data) = &voxel_data.data {

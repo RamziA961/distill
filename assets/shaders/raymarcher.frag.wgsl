@@ -1,19 +1,37 @@
 #import "shaders/common_types.wgsl"::{Box3, Camera}
 #import "shaders/util_fns.wgsl"::ray_aabb_intersect
 
-@group(2) @binding(0)
+#import bevy_pbr::{
+    pbr_fragment::pbr_input_from_standard_material,
+    pbr_functions::alpha_discard,
+}
+
+
+#ifdef PREPASS_PIPELINE
+#import bevy_pbr::{
+    prepass_io::{VertexOutput, FragmentOutput},
+    pbr_deferred_functions::deferred_output,
+}
+#else
+#import bevy_pbr::{
+    forward_io::{VertexOutput, FragmentOutput},
+    pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
+}
+#endif
+
+@group(2) @binding(100)
 var voxel_texture: texture_3d<f32>;
 
-@group(2) @binding(1)
+@group(2) @binding(101)
 var voxel_sampler: sampler;
 
-@group(2) @binding(2)
+@group(2) @binding(102)
 var<uniform> camera: Camera;
 
-@group(2) @binding(3)
+@group(2) @binding(103)
 var<uniform> grid_size: u32;
 
-@group(2) @binding(4)
+@group(2) @binding(104)
 var<uniform> grid_bounds: Box3;
 
 const OUT_OF_BOUNDS_DIST: f32 = 1e30;
@@ -94,18 +112,26 @@ fn raymarch(origin: vec3<f32>, dir: vec3<f32>, voxel_size: f32, max_dist: f32) -
 
 @fragment
 fn fragment(
-    @builtin(position) position: vec4<f32>,
-    @location(0) world_position: vec4<f32>,
-) -> @location(0) vec4<f32> {
-    let frag_coord = position.xy;
+    in: VertexOutput,
+    @builtin(front_facing) is_front: bool,
+) -> FragmentOutput {
+    var pbr_input = pbr_input_from_standard_material(in, is_front);
+    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color); 
+
+    // Raymarching logic
     let camera_position = camera.inv_view_mat[3].xyz;
-
-    let dir = normalize(world_position.xyz - camera_position);
-
+    let dir = normalize(in.world_position.xyz - camera_position);
     // Intersect with the cube bounding the SDF
     let result = ray_aabb_intersect(camera_position, dir, grid_bounds);
     if (!result.hit) {
-        return vec4<f32>(0.0); // background
+        // Return background if the ray misses the volume
+#ifdef PREPASS_PIPELINE
+        return deferred_output(in, pbr_input);
+#else
+        var out: FragmentOutput;
+        out.color = vec4<f32>(0.0);
+        return out;
+#endif
     }
     
     // Start and end distances inside the box
@@ -126,11 +152,18 @@ fn fragment(
 
     let t = raymarch(start, dir, voxel_size, max_dist);
     if (t < 0.0) {
-        return vec4<f32>(0.0); // miss inside cube
+        // Miss inside bounds
+#ifdef PREPASS_PIPELINE
+        return deferred_output(in, pbr_input);
+#else
+        var out: FragmentOutput;
+        out.color = vec4<f32>(0.0);
+        return out;
+#endif
     }
 
+    // Compute surface position and normal
     let eps = voxel_size * 0.5;
-
     let p = start + dir * t;
     // Compute normal by fast central difference
     let n = normalize(vec3<f32>(
@@ -139,6 +172,24 @@ fn fragment(
         voxel_lookup(p + vec3<f32>(0.0, 0.0, eps), 0.0) - voxel_lookup(p - vec3<f32>(0.0, 0.0, eps), 0.0)
     ));
 
-    return vec4<f32>(n, 1.0);
+    // Update PBR input with raymarched data
+    pbr_input.world_position = vec4<f32>(p, 1.0);
+    pbr_input.world_normal = n;
+    pbr_input.N = n;
+
+    // View direction in world space
+    let v = normalize(camera_position - p);
+    pbr_input.V = v;
+
+#ifdef PREPASS_PIPELINE
+    let out = deferred_output(in, pbr_input);
+#else
+    var out: FragmentOutput;
+    // Apply Bevy's lighting
+    out.color = apply_pbr_lighting(pbr_input);
+    // Post-lighting (fog, tone mapping, etc.)
+    out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+#endif
+    return out;
 }
 
