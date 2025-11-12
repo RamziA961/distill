@@ -18,9 +18,13 @@ pub struct BvhData {
     pub triangles: Vec<GpuTriangle>,
 }
 
+#[derive(Debug, Clone, Component)]
+pub struct BvhTargetMarker;
+
+#[allow(clippy::type_complexity)]
 fn bvh_system(
     mut commands: Commands,
-    mesh_handles: Query<(Entity, &Mesh3d), Without<BvhData>>,
+    mesh_handles: Query<(Entity, &Mesh3d), (With<BvhTargetMarker>, Without<BvhData>)>,
     meshes: Res<Assets<Mesh>>,
 ) {
     for (entity, mesh_handle) in mesh_handles.iter() {

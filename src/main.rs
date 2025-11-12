@@ -1,9 +1,9 @@
 use crate::{
-    bvh::BvhPlugin,
+    bvh::{BvhPlugin, BvhTargetMarker},
     camera::{
         configuration::CameraConfiguration, marker::CameraMarkerPrimary, plugin::CameraPlugin,
     },
-    voxelization::{VoxelizationPlugin, VoxelizeMarker},
+    voxelization::{VoxelizationPlugin, VoxelizeTargetMarker},
 };
 use bevy::prelude::*;
 
@@ -66,7 +66,8 @@ fn spawn_target_mesh(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.spawn((
-        VoxelizeMarker,
+        VoxelizeTargetMarker,
+        BvhTargetMarker,
         Mesh3d(meshes.add(
             Sphere::new(1.0),
             //Cuboid::new(2.0, 2.0, 2.0),

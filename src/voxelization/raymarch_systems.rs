@@ -2,7 +2,7 @@ use crate::{
     camera::marker::CameraMarkerPrimary,
     gpu_types::{GpuBox3, GpuCamera},
     voxelization::{
-        VoxelizationData, VoxelizationState, VoxelizeMarker, raymarch::RaymarchRenderTarget,
+        VoxelizationData, VoxelizationState, VoxelizeTargetMarker, raymarch::RaymarchRenderTarget,
         voxelization_worker::SIZE,
     },
 };
@@ -14,7 +14,7 @@ pub(super) fn spawn_raymarch_render_targets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<RaymarchMaterial>>,
-    voxel_query: Query<(Entity, &Mesh3d, &VoxelizationData), With<VoxelizeMarker>>,
+    voxel_query: Query<(Entity, &Mesh3d, &VoxelizationData), With<VoxelizeTargetMarker>>,
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
     existing_targets: Query<&RaymarchRenderTarget>,
 ) {
@@ -70,7 +70,7 @@ pub(super) fn spawn_raymarch_render_targets(
 pub(super) fn update_raymarch_materials(
     mut materials: ResMut<Assets<RaymarchMaterial>>,
     targets: Query<(&RaymarchRenderTarget, &MeshMaterial3d<RaymarchMaterial>)>,
-    _voxel_sources: Query<&VoxelizationData, With<VoxelizeMarker>>,
+    _voxel_sources: Query<&VoxelizationData, With<VoxelizeTargetMarker>>,
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
 ) {
     let (camera_transform, projection) = camera_params.into_inner();
