@@ -37,7 +37,7 @@ impl Plugin for VoxelizationPlugin {
 }
 
 #[derive(Debug, Clone, Component)]
-pub struct VoxelizeMarker;
+pub struct VoxelizeTargetMarker;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum VoxelizationState {

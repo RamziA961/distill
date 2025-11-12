@@ -10,7 +10,7 @@ use tracing::instrument;
 use crate::{
     bvh::BvhData,
     voxelization::{
-        SignedDistanceFieldData, VoxelizationData, VoxelizationState, VoxelizeMarker,
+        SignedDistanceFieldData, VoxelizationData, VoxelizationState, VoxelizeTargetMarker,
         voxelization_worker::{SIZE, VoxelVariables, VoxelizationWorker},
     },
 };
@@ -19,7 +19,7 @@ use crate::{
 #[instrument(skip_all)]
 pub(super) fn queue_voxelization(
     mut commands: Commands,
-    mesh_data: Query<(Entity, &BvhData), (With<VoxelizeMarker>, Without<VoxelizationData>)>,
+    mesh_data: Query<(Entity, &BvhData), (With<VoxelizeTargetMarker>, Without<VoxelizationData>)>,
     mut worker: ResMut<AppComputeWorker<VoxelizationWorker>>,
 ) {
     if mesh_data.is_empty() {
@@ -57,7 +57,7 @@ pub(super) fn queue_voxelization(
 pub(super) fn extract_voxelization_data(
     mut images: ResMut<Assets<Image>>,
     worker: ResMut<AppComputeWorker<VoxelizationWorker>>,
-    mut query: Query<(Entity, &mut VoxelizationData), With<VoxelizeMarker>>,
+    mut query: Query<(Entity, &mut VoxelizationData), With<VoxelizeTargetMarker>>,
 ) {
     if !worker.ready() {
         trace!("Worker is not ready!");
