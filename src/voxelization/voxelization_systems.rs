@@ -92,7 +92,7 @@ pub(super) fn extract_voxelization_data(
             TextureDimension::D3,
             bytemuck::cast_slice(&sdf_buffer).to_vec(),
             TextureFormat::R32Float, // one channel, 32-bit float
-            RenderAssetUsages::RENDER_WORLD,
+            RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
         );
 
         image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
