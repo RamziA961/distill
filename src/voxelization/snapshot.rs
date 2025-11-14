@@ -61,17 +61,17 @@ pub fn snapshotter(
         let voxels: &[f32] = bytemuck::cast_slice(raw_data);
 
         match snapshot_type.as_ref() {
-            SnapshotType::Occupancy => occupancy_visualization(voxels),
-            SnapshotType::SignedDistance => signed_distance_visualization(voxels),
-            SnapshotType::AbsoluteDistance => absolute_distance_visualization(voxels),
-            SnapshotType::MaximumIntensity => mip_visualization(voxels),
+            SnapshotType::Occupancy => occupancy_visualization(&entity, voxels),
+            SnapshotType::SignedDistance => signed_distance_visualization(&entity, voxels),
+            SnapshotType::AbsoluteDistance => absolute_distance_visualization(&entity, voxels),
+            SnapshotType::MaximumIntensity => mip_visualization(&entity, voxels),
         }
 
-        info!("Saved {} voxel slices to disk", SIZE);
+        info!("Snapshot(s) for entity {:?} completed.", entity);
     }
 }
 
-fn signed_distance_visualization(voxels: &[f32]) {
+fn signed_distance_visualization(entity: &Entity, voxels: &[f32]) {
     // Find min/max for normalization
     let min_val = voxels.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_val = voxels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -102,13 +102,13 @@ fn signed_distance_visualization(voxels: &[f32]) {
             }
         }
         // Save slice as PNG
-        let filename = format!("temp/voxel_slice_{z:03}.png");
+        let filename = format!("temp/{entity}_{z:03}.png");
         let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
         img.save(p).expect("Failed to save voxel slice image");
     }
 }
 
-fn absolute_distance_visualization(voxels: &[f32]) {
+fn absolute_distance_visualization(entity: &Entity, voxels: &[f32]) {
     let unsigned_voxels = voxels.iter().map(|f| f.abs()).collect::<Vec<_>>();
 
     // Find min/max for normalization
@@ -138,13 +138,13 @@ fn absolute_distance_visualization(voxels: &[f32]) {
             }
         }
         // Save slice as PNG
-        let filename = format!("temp/voxel_slice_{z:03}.png");
+        let filename = format!("temp/{entity}_{z:03}.png");
         let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
         img.save(p).expect("Failed to save voxel slice image");
     }
 }
 
-fn occupancy_visualization(voxels: &[f32]) {
+fn occupancy_visualization(entity: &Entity, voxels: &[f32]) {
     // Find min/max for normalization
     let min_val = voxels.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_val = voxels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -166,13 +166,13 @@ fn occupancy_visualization(voxels: &[f32]) {
             }
         }
         // Save slice as PNG
-        let filename = format!("temp/voxel_slice_{z:03}.png");
+        let filename = format!("temp/{entity}_{z:03}.png");
         let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
         img.save(p).expect("Failed to save voxel slice image");
     }
 }
 
-fn mip_visualization(voxels: &[f32]) {
+fn mip_visualization(entity: &Entity, voxels: &[f32]) {
     let mut img = GrayImage::new(SIZE, SIZE);
 
     for y in 0..SIZE {
@@ -186,7 +186,7 @@ fn mip_visualization(voxels: &[f32]) {
             img.put_pixel(x, y, Luma([pixel_value]));
         }
     }
-
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("temp/voxel_mip.png");
+    let filename = format!("temp/{entity}_mip.png");
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
     img.save(p).expect("Failed to save MIP image");
 }
