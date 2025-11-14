@@ -19,7 +19,7 @@ pub struct RaymarchMaterialExtension {
     pub grid_size: u32,
 
     #[uniform(104)]
-    pub grid_bounds: GpuBox3,
+    pub mesh_bounds: GpuBox3,
 
     #[uniform(105)]
     pub local_from_world: Mat4,

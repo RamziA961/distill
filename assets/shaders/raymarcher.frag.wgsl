@@ -32,7 +32,7 @@ var<uniform> camera: Camera;
 var<uniform> grid_size: u32;
 
 @group(2) @binding(104)
-var<uniform> grid_bounds: Box3;
+var<uniform> mesh_bounds: Box3;
 
 @group(2) @binding(105)
 var<uniform> local_from_world: mat4x4<f32>;
@@ -45,8 +45,8 @@ const EPSILON: f32 = 0.5;
 
 // Sample 3D SDF using hardware interpolation and mipmaps
 fn voxel_lookup(p: vec3<f32>, mip: f32) -> f32 {
-    let extent = grid_bounds.max - grid_bounds.min;
-    let rel = (p - grid_bounds.min) / extent;
+    let extent = mesh_bounds.max - mesh_bounds.min;
+    let rel = (p - mesh_bounds.min) / extent;
 
     return select(
         textureSampleLevel(voxel_texture, voxel_sampler, rel, mip).r,
@@ -133,7 +133,7 @@ fn fragment(
     let dir_local = normalize((local_from_world * vec4<f32>(dir_world, 0.0)).xyz);
 
     // Intersect with the cube bounding the SDF
-    let result = ray_aabb_intersect(origin_local, dir_local, grid_bounds);
+    let result = ray_aabb_intersect(origin_local, dir_local, mesh_bounds);
     if (!result.hit) {
         // Return background if the ray misses the volume
 #ifdef PREPASS_PIPELINE
@@ -150,10 +150,9 @@ fn fragment(
     let end_t = result.tmax;
     let max_dist = end_t - start_t;
 
-
     let start_local = origin_local + dir_local * start_t;
 
-    let extent = grid_bounds.max - grid_bounds.min;
+    let extent = mesh_bounds.max - mesh_bounds.min;
     let max_extent = max(extent.x, max(extent.y, extent.z));
     let voxel_size = max_extent / f32(grid_size);
 

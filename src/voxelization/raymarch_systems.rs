@@ -39,7 +39,7 @@ pub(super) fn spawn_raymarch_render_targets(
         }
 
         let mesh = meshes.get(mesh_handle).unwrap();
-        let grid_bounds = mesh.compute_aabb().map(GpuBox3::from).unwrap();
+        let mesh_bounds = mesh.compute_aabb().map(GpuBox3::from).unwrap();
         let grid_size = SIZE;
 
         let Some(voxel_info) = &voxel_data.data else {
@@ -60,8 +60,8 @@ pub(super) fn spawn_raymarch_render_targets(
                 source_entity: entity,
             },
             Mesh3d(meshes.add(Cuboid::from_corners(
-                Vec3::from(*grid_bounds.min()),
-                Vec3::from(*grid_bounds.max()),
+                Vec3::from(*mesh_bounds.min()),
+                Vec3::from(*mesh_bounds.max()),
             ))),
             MeshMaterial3d(materials.add(ExtendedMaterial {
                 base: StandardMaterial {
@@ -73,7 +73,7 @@ pub(super) fn spawn_raymarch_render_targets(
                     voxel_texture: sdf_handle,
                     camera,
                     grid_size,
-                    grid_bounds,
+                    mesh_bounds,
                     local_from_world: mat.inverse(),
                     world_from_local: mat,
                 },
