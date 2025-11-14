@@ -20,6 +20,12 @@ pub struct RaymarchMaterialExtension {
 
     #[uniform(104)]
     pub grid_bounds: GpuBox3,
+
+    #[uniform(105)]
+    pub local_from_world: Mat4,
+
+    #[uniform(106)]
+    pub world_from_local: Mat4,
 }
 
 impl MaterialExtension for RaymarchMaterialExtension {
