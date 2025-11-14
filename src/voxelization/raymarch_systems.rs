@@ -3,17 +3,19 @@ use crate::{
     gpu_types::{GpuBox3, GpuCamera},
     voxelization::{
         VoxelizationData, VoxelizationState, VoxelizeTargetMarker, raymarch::RaymarchRenderTarget,
-        voxelization_worker::SIZE,
+        raymarch_material::RaymarchMaterialExtension, voxelization_worker::SIZE,
     },
 };
-use bevy::{prelude::*, render::mesh::MeshAabb};
-
-use super::raymarch_material::RaymarchMaterial;
+use bevy::{
+    pbr::{ExtendedMaterial, wireframe::Wireframe},
+    prelude::*,
+    render::mesh::MeshAabb,
+};
 
 pub(super) fn spawn_raymarch_render_targets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<RaymarchMaterial>>,
+    mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>>,
     voxel_query: Query<(Entity, &Mesh3d, &VoxelizationData), With<VoxelizeTargetMarker>>,
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
     existing_targets: Query<&RaymarchRenderTarget>,
@@ -37,7 +39,7 @@ pub(super) fn spawn_raymarch_render_targets(
         }
 
         let mesh = meshes.get(mesh_handle).unwrap();
-        let grid_bounds = mesh.compute_aabb().map(GpuBox3::from).unwrap();
+        let mesh_bounds = mesh.compute_aabb().map(GpuBox3::from).unwrap();
         let grid_size = SIZE;
 
         let Some(voxel_info) = &voxel_data.data else {
@@ -50,35 +52,58 @@ pub(super) fn spawn_raymarch_render_targets(
 
         let sdf_handle = voxel_info.signed_distance_field.clone();
 
+        let scale_factor = 1.0f32;
+        let mat = Mat4::from_scale(Vec3::splat(scale_factor));
         // Spawn a separate render target entity
         commands.spawn((
             RaymarchRenderTarget {
                 source_entity: entity,
             },
-            Mesh3d(meshes.add(Cuboid::from_size(grid_bounds.size().into()))),
-            MeshMaterial3d(materials.add(RaymarchMaterial {
-                voxel_texture: sdf_handle,
-                camera,
-                grid_bounds,
-                grid_size,
+            Mesh3d(meshes.add(Cuboid::from_corners(
+                Vec3::from(*mesh_bounds.min()),
+                Vec3::from(*mesh_bounds.max()),
+            ))),
+            MeshMaterial3d(materials.add(ExtendedMaterial {
+                base: StandardMaterial {
+                    base_color: Color::linear_rgba(0.0, 1.0, 0.0, 1.0),
+                    alpha_mode: AlphaMode::Blend,
+                    ..Default::default()
+                },
+                extension: RaymarchMaterialExtension {
+                    voxel_texture: sdf_handle,
+                    camera,
+                    grid_size,
+                    mesh_bounds,
+                    local_from_world: mat.inverse(),
+                    world_from_local: mat,
+                },
             })),
-            Transform::from_translation(grid_bounds.center().into()),
+            Transform::from_matrix(mat),
+            Wireframe,
         ));
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub(super) fn update_raymarch_materials(
-    mut materials: ResMut<Assets<RaymarchMaterial>>,
-    targets: Query<(&RaymarchRenderTarget, &MeshMaterial3d<RaymarchMaterial>)>,
+    mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>>,
+    targets: Query<(
+        &RaymarchRenderTarget,
+        &MeshMaterial3d<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>,
+        &Transform,
+    )>,
     _voxel_sources: Query<&VoxelizationData, With<VoxelizeTargetMarker>>,
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
 ) {
     let (camera_transform, projection) = camera_params.into_inner();
     let camera = GpuCamera::from_transform_and_projection(camera_transform, projection);
 
-    for (_, material_handle) in targets.iter() {
+    for (_, material_handle, t) in targets.iter() {
         if let Some(material) = materials.get_mut(material_handle) {
-            material.camera = camera;
+            material.extension.camera = camera;
+            let mat = t.compute_matrix();
+            material.extension.world_from_local = mat;
+            material.extension.local_from_world = mat.inverse();
 
             //if let Ok(voxel_data) = voxel_sources.get(target.source_entity) {
             //    if let Some(sdf_data) = &voxel_data.data {

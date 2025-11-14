@@ -1,28 +1,52 @@
 #import "shaders/common_types.wgsl"::{Box3, Camera}
 #import "shaders/util_fns.wgsl"::ray_aabb_intersect
 
-@group(2) @binding(0)
+#import bevy_pbr::{
+    pbr_fragment::pbr_input_from_standard_material,
+    pbr_functions::alpha_discard,
+}
+
+
+#ifdef PREPASS_PIPELINE
+#import bevy_pbr::{
+    prepass_io::{VertexOutput, FragmentOutput},
+    pbr_deferred_functions::deferred_output,
+}
+#else
+#import bevy_pbr::{
+    forward_io::{VertexOutput, FragmentOutput},
+    pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
+}
+#endif
+
+@group(2) @binding(100)
 var voxel_texture: texture_3d<f32>;
 
-@group(2) @binding(1)
+@group(2) @binding(101)
 var voxel_sampler: sampler;
 
-@group(2) @binding(2)
+@group(2) @binding(102)
 var<uniform> camera: Camera;
 
-@group(2) @binding(3)
+@group(2) @binding(103)
 var<uniform> grid_size: u32;
 
-@group(2) @binding(4)
-var<uniform> grid_bounds: Box3;
+@group(2) @binding(104)
+var<uniform> mesh_bounds: Box3;
+
+@group(2) @binding(105)
+var<uniform> local_from_world: mat4x4<f32>;
+
+@group(2) @binding(106)
+var<uniform> world_from_local: mat4x4<f32>;
 
 const OUT_OF_BOUNDS_DIST: f32 = 1e30;
 const EPSILON: f32 = 0.5;
 
 // Sample 3D SDF using hardware interpolation and mipmaps
 fn voxel_lookup(p: vec3<f32>, mip: f32) -> f32 {
-    let extent = grid_bounds.max - grid_bounds.min;
-    let rel = (p - grid_bounds.min) / extent;
+    let extent = mesh_bounds.max - mesh_bounds.min;
+    let rel = (p - mesh_bounds.min) / extent;
 
     return select(
         textureSampleLevel(voxel_texture, voxel_sampler, rel, mip).r,
@@ -94,18 +118,31 @@ fn raymarch(origin: vec3<f32>, dir: vec3<f32>, voxel_size: f32, max_dist: f32) -
 
 @fragment
 fn fragment(
-    @builtin(position) position: vec4<f32>,
-    @location(0) world_position: vec4<f32>,
-) -> @location(0) vec4<f32> {
-    let frag_coord = position.xy;
-    let camera_position = camera.inv_view_mat[3].xyz;
+    in: VertexOutput,
+    @builtin(front_facing) is_front: bool,
+) -> FragmentOutput {
+    var pbr_input = pbr_input_from_standard_material(in, is_front);
+    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color); 
 
-    let dir = normalize(world_position.xyz - camera_position);
+    // Raymarching logic
+    let camera_world = camera.inv_view_mat[3].xyz;
+    let dir_world = normalize(in.world_position.xyz - camera_world);
+
+    // Transform ray into local sdf space
+    let origin_local = (local_from_world * vec4<f32>(camera_world, 1.0)).xyz;
+    let dir_local = normalize((local_from_world * vec4<f32>(dir_world, 0.0)).xyz);
 
     // Intersect with the cube bounding the SDF
-    let result = ray_aabb_intersect(camera_position, dir, grid_bounds);
+    let result = ray_aabb_intersect(origin_local, dir_local, mesh_bounds);
     if (!result.hit) {
-        return vec4<f32>(0.0); // background
+        // Return background if the ray misses the volume
+#ifdef PREPASS_PIPELINE
+        return deferred_output(in, pbr_input);
+#else
+        var out: FragmentOutput;
+        out.color = vec4<f32>(0.0);
+        return out;
+#endif
     }
     
     // Start and end distances inside the box
@@ -113,32 +150,56 @@ fn fragment(
     let end_t = result.tmax;
     let max_dist = end_t - start_t;
 
-    // Start point inside bounds
-    let start = camera_position + dir * start_t;
+    let start_local = origin_local + dir_local * start_t;
 
-    let voxel_size = max(
-        max(
-            (grid_bounds.max - grid_bounds.min).x,
-            (grid_bounds.max - grid_bounds.min).y
-        ),
-        (grid_bounds.max - grid_bounds.min).z
-    ) / f32(grid_size);
+    let extent = mesh_bounds.max - mesh_bounds.min;
+    let max_extent = max(extent.x, max(extent.y, extent.z));
+    let voxel_size = max_extent / f32(grid_size);
 
-    let t = raymarch(start, dir, voxel_size, max_dist);
+    let t = raymarch(start_local, dir_local, voxel_size, max_dist);
     if (t < 0.0) {
-        return vec4<f32>(0.0); // miss inside cube
+        // Miss inside bounds
+#ifdef PREPASS_PIPELINE
+        return deferred_output(in, pbr_input);
+#else
+        var out: FragmentOutput;
+        out.color = vec4<f32>(0.0);
+        return out;
+#endif
     }
 
+    // Compute surface position and normal
     let eps = voxel_size * 0.5;
-
-    let p = start + dir * t;
+    let p_local = start_local + dir_local * t;
     // Compute normal by fast central difference
-    let n = normalize(vec3<f32>(
-        voxel_lookup(p + vec3<f32>(eps, 0.0, 0.0), 0.0) - voxel_lookup(p - vec3<f32>(eps, 0.0, 0.0), 0.0),
-        voxel_lookup(p + vec3<f32>(0.0, eps, 0.0), 0.0) - voxel_lookup(p - vec3<f32>(0.0, eps, 0.0), 0.0),
-        voxel_lookup(p + vec3<f32>(0.0, 0.0, eps), 0.0) - voxel_lookup(p - vec3<f32>(0.0, 0.0, eps), 0.0)
+    let n_local = normalize(vec3<f32>(
+        voxel_lookup(p_local + vec3<f32>(eps, 0.0, 0.0), 0.0) - voxel_lookup(p_local - vec3<f32>(eps, 0.0, 0.0), 0.0),
+        voxel_lookup(p_local + vec3<f32>(0.0, eps, 0.0), 0.0) - voxel_lookup(p_local - vec3<f32>(0.0, eps, 0.0), 0.0),
+        voxel_lookup(p_local + vec3<f32>(0.0, 0.0, eps), 0.0) - voxel_lookup(p_local - vec3<f32>(0.0, 0.0, eps), 0.0)
     ));
 
-    return vec4<f32>(n, 1.0);
+    // Back to world space for lighting
+    let p_world = (world_from_local * vec4<f32>(p_local, 1.0)).xyz;
+    let n_world = normalize((world_from_local * vec4<f32>(n_local, 0.0)).xyz);
+
+    // Update PBR input with raymarched data
+    pbr_input.world_position = vec4<f32>(p_world, 1.0);
+    pbr_input.world_normal = n_world;
+    pbr_input.N = n_world;
+
+    // View direction in world space
+    let v_world = normalize(camera_world - p_world);
+    pbr_input.V = v_world;
+
+#ifdef PREPASS_PIPELINE
+    let out = deferred_output(in, pbr_input);
+#else
+    var out: FragmentOutput;
+    // Apply Bevy's lighting
+    out.color = apply_pbr_lighting(pbr_input);
+    // Post-lighting (fog, tone mapping, etc.)
+    out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+#endif
+    return out;
 }
 
