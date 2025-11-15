@@ -48,8 +48,8 @@ impl ComputeWorker for VoxelizationWorker {
                 VoxelVariables::VoxelTexture.as_ref(),
                 (SIZE * SIZE * SIZE * 4) as u64,
             )
-            .add_empty_rw_storage(VoxelVariables::Triangles.as_ref(), 4212 * 96)
-            .add_empty_rw_storage(VoxelVariables::BvhNodes.as_ref(), 4096 * 32)
+            .add_empty_rw_storage(VoxelVariables::Triangles.as_ref(), 8192 * 96)
+            .add_empty_rw_storage(VoxelVariables::BvhNodes.as_ref(), 8192 * 32)
             .add_uniform(VoxelVariables::VoxelUniforms.as_ref(), &voxel_uniforms)
             .add_pass::<VoxelizationShader>(
                 workgroups,
