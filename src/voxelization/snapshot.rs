@@ -57,10 +57,7 @@ pub fn snapshotter(
         };
 
         let Some(raw_data) = &image.data else {
-            error!(
-                "Image for entity {:?} has no CPU-accessible data (likely GPU-only).",
-                entity
-            );
+            error!("Image for entity {:?} has no CPU-accessible data.", entity);
             continue;
         };
 
@@ -97,10 +94,12 @@ fn signed_distance_visualization(voxels: &[f32]) -> SliceStack {
 
     let mut slices = Vec::with_capacity(SIZE as usize);
 
-    for z in 0..SIZE {
+    for y in 0..SIZE {
         let mut img = RgbImage::new(SIZE, SIZE);
 
-        for y in 0..SIZE {
+        for z in 0..SIZE {
+            let z_img = SIZE - z - 1;
+
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = voxels[index];
@@ -117,10 +116,10 @@ fn signed_distance_visualization(voxels: &[f32]) -> SliceStack {
                     (0, 255, 0) // near surface
                 };
 
-                img.put_pixel(x, SIZE - y - 1, Rgb([r, g, b]));
+                img.put_pixel(x, z_img, Rgb([r, g, b]));
             }
         }
-        slices.insert(z as usize, img.into());
+        slices.insert(y as usize, img.into());
     }
 
     SliceStack(slices)
@@ -142,10 +141,12 @@ fn absolute_distance_visualization(voxels: &[f32]) -> SliceStack {
 
     let mut slices = Vec::with_capacity(SIZE as usize);
 
-    for z in 0..SIZE {
+    for y in 0..SIZE {
         let mut img = GrayImage::new(SIZE, SIZE);
 
-        for y in 0..SIZE {
+        for z in 0..SIZE {
+            let z_img = SIZE - z - 1;
+
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = unsigned_voxels[index];
@@ -154,10 +155,10 @@ fn absolute_distance_visualization(voxels: &[f32]) -> SliceStack {
                 let normalized = ((value - min_val) / (max_val - min_val)).clamp(0.0, 1.0);
                 let pixel_value = (normalized * 255.0) as u8;
 
-                img.put_pixel(x, SIZE - y - 1, Luma([pixel_value]));
+                img.put_pixel(x, z_img, Luma([pixel_value]));
             }
         }
-        slices.insert(z as usize, img.into());
+        slices.insert(y as usize, img.into());
     }
 
     SliceStack(slices)
@@ -171,10 +172,12 @@ fn occupancy_visualization(voxels: &[f32]) -> SliceStack {
 
     let mut slices = Vec::with_capacity(SIZE as usize);
 
-    for z in 0..SIZE {
+    for y in 0..SIZE {
         let mut img = GrayImage::new(SIZE, SIZE);
 
-        for y in 0..SIZE {
+        for z in 0..SIZE {
+            let z_img = SIZE - z - 1;
+
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = voxels[index];
@@ -183,10 +186,10 @@ fn occupancy_visualization(voxels: &[f32]) -> SliceStack {
                 let normalized = if value < 0.0 { 0.0 } else { 1.0 };
                 let pixel_value = (normalized * 255.0) as u8;
 
-                img.put_pixel(x, SIZE - y - 1, Luma([pixel_value]));
+                img.put_pixel(x, z_img, Luma([pixel_value]));
             }
         }
-        slices.insert(z as usize, img.into());
+        slices.insert(y as usize, img.into());
     }
 
     SliceStack(slices)
@@ -195,17 +198,21 @@ fn occupancy_visualization(voxels: &[f32]) -> SliceStack {
 fn mip_visualization(voxels: &[f32]) -> SliceStack {
     let mut img = GrayImage::new(SIZE, SIZE);
 
-    for y in 0..SIZE {
+    for z in 0..SIZE {
+        let img_z = SIZE - z - 1;
+
         for x in 0..SIZE {
-            let mut max_val: f64 = 0.0;
-            for z in 0..SIZE {
+            let mut max_val = 0.0f32;
+
+            // project along Z axis
+            for y in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
-                max_val = max_val.max(voxels[index].abs() as f64);
+                max_val = max_val.max(voxels[index].abs());
             }
-            let pixel_value = ((max_val / 1.0).clamp(0.0, 1.0) * 255.0) as u8;
-            img.put_pixel(x, SIZE - y - 1, Luma([pixel_value]));
+
+            let pixel_value = (max_val.clamp(0.0, 1.0) * 255.0) as u8;
+            img.put_pixel(x, img_z, Luma([pixel_value]));
         }
     }
-
     SliceStack(vec![img.into()])
 }
