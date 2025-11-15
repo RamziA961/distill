@@ -6,11 +6,7 @@ use crate::{
     voxelization::{VoxelizationPlugin, VoxelizeTargetMarker},
 };
 use bevy::prelude::*;
-
-#[cfg(feature = "distill-dev")]
-use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
-#[cfg(feature = "distill-dev")]
-use iyes_perf_ui::{PerfUiPlugin, prelude::PerfUiDefaultEntries};
+use bevy_obj::ObjPlugin;
 
 pub(crate) mod bvh;
 mod camera;
@@ -20,11 +16,14 @@ mod window;
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins((DefaultPlugins,));
+    app.add_plugins((DefaultPlugins, ObjPlugin));
 
     #[cfg(feature = "distill-dev")]
     {
+        use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
         use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
+        use iyes_perf_ui::PerfUiPlugin;
+
         app.add_plugins((
             FrameTimeDiagnosticsPlugin::default(),
             PerfUiPlugin,
@@ -49,7 +48,7 @@ fn main() {
     app.add_systems(Startup, (window::grab_cursor, window::hide_cursor));
     app.add_systems(Update, window::toggle_cursor);
 
-    app.add_systems(Startup, spawn_target_mesh);
+    app.add_systems(Startup, spawn_target_mesh_obj);
 
     app.run();
 }
@@ -68,6 +67,7 @@ fn light_system(mut commands: Commands) {
 
 #[cfg(feature = "distill-dev")]
 fn debug_tools(mut commands: Commands) {
+    use iyes_perf_ui::prelude::PerfUiDefaultEntries;
     commands.spawn(PerfUiDefaultEntries::default());
 }
 
@@ -87,6 +87,25 @@ fn spawn_target_mesh(
             //Tetrahedron::default(),
             //Capsule3d::default(),
         )),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::linear_rgba(1.0, 0.0, 0.0, 1.0),
+            ..default()
+        })),
+        Transform::from_xyz(-3.0, 0.0, 0.0),
+    ));
+}
+
+fn spawn_target_mesh_obj(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+) {
+    let mesh_handle = asset_server.load::<Mesh>("models/bunny.obj");
+
+    commands.spawn((
+        VoxelizeTargetMarker,
+        BvhTargetMarker,
+        Mesh3d(mesh_handle),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::linear_rgba(1.0, 0.0, 0.0, 1.0),
             ..default()

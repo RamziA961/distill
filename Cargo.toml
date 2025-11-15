@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 bevy = { version = "0.16.1", default-features = true, features = ["trace"] }
 bevy_app_compute = "0.16.0"
+bevy_obj = { version = "0.16.1", default-features = false, features = ["mesh"] }
 bytemuck = "1.23.2"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 strum = { version = "0.27.2", features = ["derive"] }
