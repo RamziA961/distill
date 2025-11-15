@@ -51,11 +51,11 @@ impl ComputeWorker for VoxelizationWorker {
             )
             .add_empty_rw_storage(
                 VoxelVariables::Triangles.as_ref(),
-                4212 * std::mem::size_of::<GpuTriangle>() as u64,
+                8192 * std::mem::size_of::<GpuTriangle>() as u64,
             )
             .add_empty_rw_storage(
                 VoxelVariables::BvhNodes.as_ref(),
-                4096 * std::mem::size_of::<GpuBvhNode>() as u64,
+                8192 * std::mem::size_of::<GpuBvhNode>() as u64,
             )
             .add_uniform(VoxelVariables::VoxelUniforms.as_ref(), &voxel_uniforms)
             .add_pass::<VoxelizationShader>(
