@@ -1,19 +1,25 @@
+use crate::voxelization::{VoxelizationData, VoxelizationState, voxelization_worker::SIZE};
+use bevy::prelude::*;
+use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
 use std::path::Path;
 
-use bevy::prelude::*;
-use image::{GrayImage, Luma, Rgb, RgbImage};
+const TEMP_DIR: &str = "temp";
 
-use crate::voxelization::{VoxelizationData, VoxelizationState, voxelization_worker::SIZE};
-
-#[derive(Resource, Clone, Debug, Default)]
+#[derive(Resource, Clone, Debug, Default, strum::EnumString, strum::AsRefStr, strum::Display)]
 #[allow(dead_code)]
 pub enum SnapshotType {
     #[default]
+    #[strum(serialize = "occ")]
     Occupancy,
+    #[strum(serialize = "sd")]
     SignedDistance,
+    #[strum(serialize = "ad")]
     AbsoluteDistance,
+    #[strum(serialize = "mip")]
     MaximumIntensity,
 }
+
+struct SliceStack(Vec<DynamicImage>);
 
 pub fn snapshotter(
     input: Res<ButtonInput<KeyCode>>,
@@ -60,23 +66,36 @@ pub fn snapshotter(
 
         let voxels: &[f32] = bytemuck::cast_slice(raw_data);
 
-        match snapshot_type.as_ref() {
-            SnapshotType::Occupancy => occupancy_visualization(&entity, voxels),
-            SnapshotType::SignedDistance => signed_distance_visualization(&entity, voxels),
-            SnapshotType::AbsoluteDistance => absolute_distance_visualization(&entity, voxels),
-            SnapshotType::MaximumIntensity => mip_visualization(&entity, voxels),
+        let SliceStack(slices) = match *snapshot_type {
+            SnapshotType::Occupancy => occupancy_visualization(voxels),
+            SnapshotType::SignedDistance => signed_distance_visualization(voxels),
+            SnapshotType::AbsoluteDistance => absolute_distance_visualization(voxels),
+            SnapshotType::MaximumIntensity => mip_visualization(voxels),
+        };
+
+        let temp_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(TEMP_DIR);
+        for (i, slice) in slices.iter().enumerate() {
+            let slice_path = temp_path.join(format!("{entity}_{}_{i:03}.png", *snapshot_type));
+            _ = slice.save(slice_path).map_err(|e| {
+                error!(
+                    "Failed to save snapshot for entity {:?} slice {}: {}",
+                    entity, i, e
+                )
+            });
         }
 
         info!("Snapshot(s) for entity {:?} completed.", entity);
     }
 }
 
-fn signed_distance_visualization(entity: &Entity, voxels: &[f32]) {
+fn signed_distance_visualization(voxels: &[f32]) -> SliceStack {
     // Find min/max for normalization
     let min_val = voxels.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_val = voxels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let abs_max = min_val.abs().max(max_val.abs());
     info!(min = min_val, max = max_val, abs_max = abs_max);
+
+    let mut slices = Vec::with_capacity(SIZE as usize);
 
     for z in 0..SIZE {
         let mut img = RgbImage::new(SIZE, SIZE);
@@ -98,17 +117,16 @@ fn signed_distance_visualization(entity: &Entity, voxels: &[f32]) {
                     (0, 255, 0) // near surface
                 };
 
-                img.put_pixel(x, y, Rgb([r, g, b]));
+                img.put_pixel(x, SIZE - y - 1, Rgb([r, g, b]));
             }
         }
-        // Save slice as PNG
-        let filename = format!("temp/{entity}_{z:03}.png");
-        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
-        img.save(p).expect("Failed to save voxel slice image");
+        slices.insert(z as usize, img.into());
     }
+
+    SliceStack(slices)
 }
 
-fn absolute_distance_visualization(entity: &Entity, voxels: &[f32]) {
+fn absolute_distance_visualization(voxels: &[f32]) -> SliceStack {
     let unsigned_voxels = voxels.iter().map(|f| f.abs()).collect::<Vec<_>>();
 
     // Find min/max for normalization
@@ -122,6 +140,8 @@ fn absolute_distance_visualization(entity: &Entity, voxels: &[f32]) {
         .fold(f32::NEG_INFINITY, f32::max);
     info!(min = min_val, max = max_val);
 
+    let mut slices = Vec::with_capacity(SIZE as usize);
+
     for z in 0..SIZE {
         let mut img = GrayImage::new(SIZE, SIZE);
 
@@ -134,21 +154,22 @@ fn absolute_distance_visualization(entity: &Entity, voxels: &[f32]) {
                 let normalized = ((value - min_val) / (max_val - min_val)).clamp(0.0, 1.0);
                 let pixel_value = (normalized * 255.0) as u8;
 
-                img.put_pixel(x, y, Luma([pixel_value]));
+                img.put_pixel(x, SIZE - y - 1, Luma([pixel_value]));
             }
         }
-        // Save slice as PNG
-        let filename = format!("temp/{entity}_{z:03}.png");
-        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
-        img.save(p).expect("Failed to save voxel slice image");
+        slices.insert(z as usize, img.into());
     }
+
+    SliceStack(slices)
 }
 
-fn occupancy_visualization(entity: &Entity, voxels: &[f32]) {
+fn occupancy_visualization(voxels: &[f32]) -> SliceStack {
     // Find min/max for normalization
     let min_val = voxels.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_val = voxels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     info!(min = min_val, max = max_val);
+
+    let mut slices = Vec::with_capacity(SIZE as usize);
 
     for z in 0..SIZE {
         let mut img = GrayImage::new(SIZE, SIZE);
@@ -162,17 +183,16 @@ fn occupancy_visualization(entity: &Entity, voxels: &[f32]) {
                 let normalized = if value < 0.0 { 0.0 } else { 1.0 };
                 let pixel_value = (normalized * 255.0) as u8;
 
-                img.put_pixel(x, y, Luma([pixel_value]));
+                img.put_pixel(x, SIZE - y - 1, Luma([pixel_value]));
             }
         }
-        // Save slice as PNG
-        let filename = format!("temp/{entity}_{z:03}.png");
-        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
-        img.save(p).expect("Failed to save voxel slice image");
+        slices.insert(z as usize, img.into());
     }
+
+    SliceStack(slices)
 }
 
-fn mip_visualization(entity: &Entity, voxels: &[f32]) {
+fn mip_visualization(voxels: &[f32]) -> SliceStack {
     let mut img = GrayImage::new(SIZE, SIZE);
 
     for y in 0..SIZE {
@@ -183,10 +203,9 @@ fn mip_visualization(entity: &Entity, voxels: &[f32]) {
                 max_val = max_val.max(voxels[index].abs() as f64);
             }
             let pixel_value = ((max_val / 1.0).clamp(0.0, 1.0) * 255.0) as u8;
-            img.put_pixel(x, y, Luma([pixel_value]));
+            img.put_pixel(x, SIZE - y - 1, Luma([pixel_value]));
         }
     }
-    let filename = format!("temp/{entity}_mip.png");
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
-    img.save(p).expect("Failed to save MIP image");
+
+    SliceStack(vec![img.into()])
 }
