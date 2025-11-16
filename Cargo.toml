@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.16.1", default-features = true, features = ["trace"] }
-bevy_app_compute = "0.16.0"
-bevy_obj = { version = "0.16.1", default-features = false, features = ["mesh"] }
+bevy = { version = "0.17.2", default-features = true, features = [] }
+bevy_app_compute = { git = "https://github.com/jwright159/bevy_app_compute/", branch = "bevy-0.17" }
+bevy_dev_tools = { version = "0.17.2", optional = true }
+bevy_obj = { version = "0.17.1", default-features = false, features = ["mesh"] }
 bytemuck = "1.23.2"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 strum = { version = "0.27.2", features = ["derive"] }
-iyes_perf_ui = { version = "0.5.0", optional = true }
 tracing = "0.1.41"
 
 [profile.dev]
@@ -20,5 +20,5 @@ opt-level = 1
 opt-level = 3
 
 [features]
-distill-dev = ["iyes_perf_ui"]
+distill-dev = ["dep:bevy_dev_tools", "bevy/trace"]
 default = ["distill-dev"]

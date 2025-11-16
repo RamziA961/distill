@@ -1,4 +1,4 @@
-use bevy::{prelude::*, render::camera::CameraProjection};
+use bevy::prelude::*;
 use bevy_app_compute::prelude::ShaderType;
 use bytemuck::{Pod, Zeroable};
 
@@ -42,7 +42,7 @@ impl GpuCamera {
     }
 
     pub fn from_transform_and_projection(transform: &Transform, projection: &Projection) -> Self {
-        let t_mat = transform.compute_matrix();
+        let t_mat = transform.to_matrix();
         let proj_mat = projection.get_clip_from_view();
         Self {
             view_mat: t_mat.inverse(),

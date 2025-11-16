@@ -1,11 +1,12 @@
 use super::{MeshBvh, bvh_builder};
 use crate::gpu_types::{GpuBvhNode, GpuTriangle, GpuVec3};
-use bevy::{prelude::*, render::mesh::VertexAttributeValues};
+use bevy::{
+    mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
+    prelude::*,
+};
 
 impl MeshBvh for Mesh {
     fn build_bvh(&self, leaf_size: usize) -> (Vec<GpuBvhNode>, Vec<GpuTriangle>) {
-        use bevy::render::mesh::PrimitiveTopology;
-
         assert_eq!(
             self.primitive_topology(),
             PrimitiveTopology::TriangleList,
@@ -18,8 +19,8 @@ impl MeshBvh for Mesh {
         };
 
         let indices: Vec<usize> = match self.indices() {
-            Some(bevy::render::mesh::Indices::U16(i)) => i.iter().map(|&v| v as usize).collect(),
-            Some(bevy::render::mesh::Indices::U32(i)) => i.iter().map(|&v| v as usize).collect(),
+            Some(Indices::U16(i)) => i.iter().map(|&v| v as usize).collect(),
+            Some(Indices::U32(i)) => i.iter().map(|&v| v as usize).collect(),
             None => (0..positions.len()).collect(),
         };
 

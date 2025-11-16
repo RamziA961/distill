@@ -1,9 +1,6 @@
 use crate::gpu_types::{GpuBox3, GpuCamera};
-use bevy::{
-    pbr::MaterialExtension,
-    prelude::*,
-    render::render_resource::{AsBindGroup, ShaderRef},
-};
+use bevy::shader::ShaderRef;
+use bevy::{pbr::MaterialExtension, prelude::*, render::render_resource::AsBindGroup};
 
 #[derive(Asset, Clone, Debug, AsBindGroup, TypePath)]
 pub struct RaymarchMaterialExtension {

@@ -19,25 +19,25 @@
 }
 #endif
 
-@group(2) @binding(100)
+@group(#{MATERIAL_BIND_GROUP}) @binding(100)
 var voxel_texture: texture_3d<f32>;
 
-@group(2) @binding(101)
+@group(#{MATERIAL_BIND_GROUP}) @binding(101)
 var voxel_sampler: sampler;
 
-@group(2) @binding(102)
+@group(#{MATERIAL_BIND_GROUP}) @binding(102)
 var<uniform> camera: Camera;
 
-@group(2) @binding(103)
+@group(#{MATERIAL_BIND_GROUP}) @binding(103)
 var<uniform> grid_size: u32;
 
-@group(2) @binding(104)
+@group(#{MATERIAL_BIND_GROUP}) @binding(104)
 var<uniform> mesh_bounds: Box3;
 
-@group(2) @binding(105)
+@group(#{MATERIAL_BIND_GROUP}) @binding(105)
 var<uniform> local_from_world: mat4x4<f32>;
 
-@group(2) @binding(106)
+@group(#{MATERIAL_BIND_GROUP}) @binding(106)
 var<uniform> world_from_local: mat4x4<f32>;
 
 const OUT_OF_BOUNDS_DIST: f32 = 1e30;

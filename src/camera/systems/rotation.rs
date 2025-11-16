@@ -2,19 +2,19 @@ use crate::camera::{configuration::CameraConfiguration, marker::CameraMarker};
 use bevy::{
     input::mouse::AccumulatedMouseMotion,
     prelude::*,
-    window::{CursorGrabMode, PrimaryWindow},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
 pub fn camera_rotation_system<C>(
     mut camera_transforms: Query<&mut Transform, With<C>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
     camera_config: Res<CameraConfiguration<C>>,
-    primary_window: Single<&Window, With<PrimaryWindow>>,
+    cursor_options: Single<&CursorOptions, With<PrimaryWindow>>,
 ) where
     C: CameraMarker + Component + Clone,
 {
     // Prevent rotation when cursor is active
-    if primary_window.cursor_options.grab_mode != CursorGrabMode::Locked {
+    if cursor_options.grab_mode != CursorGrabMode::Locked {
         return;
     }
 
