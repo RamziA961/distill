@@ -34,7 +34,6 @@ fn main() {
             default_color: Color::BLACK,
         });
 
-        app.add_systems(Startup, debug_tools);
         app.add_systems(Update, debug_gyzmos);
     }
 
@@ -65,9 +64,6 @@ fn camera_system(mut commands: Commands) {
 fn light_system(mut commands: Commands) {
     commands.spawn((PointLight::default(), Transform::from_xyz(0.0, 10.0, 0.0)));
 }
-
-#[cfg(feature = "distill-dev")]
-fn debug_tools(mut commands: Commands) {}
 
 fn debug_gyzmos(mut gizmos: Gizmos) {
     gizmos.axes(Transform::IDENTITY, 3.0);
