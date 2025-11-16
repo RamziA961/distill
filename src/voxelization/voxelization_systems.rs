@@ -33,12 +33,11 @@ pub(super) fn queue_voxelization(
     );
 
     if let Some((entity, bvh_data)) = mesh_data.iter().next() {
-        info!("Uploading mesh {entity:?} to GPU.");
         info!(
             n_triangles = bvh_data.triangles.len(),
             n_bvh_nodes = bvh_data.nodes.len(),
+            "Uploading mesh {entity:?} to GPU."
         );
-        info!(bvh_root = ?bvh_data.nodes[0]);
 
         worker.write_slice(VoxelVariables::Triangles.as_ref(), &bvh_data.triangles);
         worker.write_slice(VoxelVariables::BvhNodes.as_ref(), &bvh_data.nodes);
