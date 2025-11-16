@@ -7,9 +7,9 @@ use crate::{
     },
 };
 use bevy::{
+    camera::primitives::MeshAabb,
     pbr::{ExtendedMaterial, wireframe::Wireframe},
     prelude::*,
-    render::mesh::MeshAabb,
 };
 
 pub(super) fn spawn_raymarch_render_targets(
@@ -106,7 +106,7 @@ pub(super) fn update_raymarch_materials(
     for (_, material_handle, t) in targets.iter() {
         if let Some(material) = materials.get_mut(material_handle) {
             material.extension.camera = camera;
-            let mat = t.compute_matrix();
+            let mat = t.to_matrix();
             material.extension.world_from_local = mat;
             material.extension.local_from_world = mat.inverse();
 

@@ -21,14 +21,12 @@ fn main() {
 
     #[cfg(feature = "distill-dev")]
     {
-        use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
         use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
-        use iyes_perf_ui::PerfUiPlugin;
-
+        use bevy_dev_tools::{DevToolsPlugin, fps_overlay::FpsOverlayPlugin};
         app.add_plugins((
-            FrameTimeDiagnosticsPlugin::default(),
-            PerfUiPlugin,
             WireframePlugin::default(),
+            DevToolsPlugin,
+            FpsOverlayPlugin::default(),
         ));
 
         app.insert_resource(WireframeConfig {
@@ -36,7 +34,6 @@ fn main() {
             default_color: Color::BLACK,
         });
 
-        app.add_systems(Startup, debug_tools);
         app.add_systems(Update, debug_gyzmos);
     }
 
@@ -66,12 +63,6 @@ fn camera_system(mut commands: Commands) {
 
 fn light_system(mut commands: Commands) {
     commands.spawn((PointLight::default(), Transform::from_xyz(0.0, 10.0, 0.0)));
-}
-
-#[cfg(feature = "distill-dev")]
-fn debug_tools(mut commands: Commands) {
-    use iyes_perf_ui::prelude::PerfUiDefaultEntries;
-    commands.spawn(PerfUiDefaultEntries::default());
 }
 
 fn debug_gyzmos(mut gizmos: Gizmos) {

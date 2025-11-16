@@ -1,5 +1,5 @@
 use super::vector_types::GpuVec3;
-use bevy::{math::bounding::Aabb3d, prelude::*, render::primitives::Aabb};
+use bevy::{camera::primitives::Aabb, math::bounding::Aabb3d, prelude::*};
 use bevy_app_compute::prelude::ShaderType;
 use bytemuck::{Pod, Zeroable};
 
