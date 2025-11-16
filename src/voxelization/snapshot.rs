@@ -1,11 +1,25 @@
-use crate::voxelization::{VoxelizationData, VoxelizationState, voxelization_worker::SIZE};
+use crate::{
+    utils::input_utils::is_modifier,
+    voxelization::{VoxelizationData, VoxelizationState, voxelization_worker::SIZE},
+};
 use bevy::prelude::*;
 use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
 use std::path::Path;
 
 const TEMP_DIR: &str = "temp";
 
-#[derive(Resource, Clone, Debug, Default, strum::EnumString, strum::AsRefStr, strum::Display)]
+#[derive(
+    States,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    strum::EnumString,
+    strum::AsRefStr,
+    strum::Display,
+)]
 #[allow(dead_code)]
 pub enum SnapshotType {
     #[default]
@@ -15,21 +29,52 @@ pub enum SnapshotType {
     SignedDistance,
     #[strum(serialize = "ad")]
     AbsoluteDistance,
-    #[strum(serialize = "mip")]
-    MaximumIntensity,
+    #[strum(serialize = "msp")]
+    MaximumSurfaceProjection,
 }
 
 struct SliceStack(Vec<DynamicImage>);
 
+pub fn cycle_snapshot_type(
+    input: Res<ButtonInput<KeyCode>>,
+    snapshot_type: Res<State<SnapshotType>>,
+    mut next_snapshot_type: ResMut<NextState<SnapshotType>>,
+) {
+    let shift_held = input.pressed(KeyCode::ShiftLeft) || input.pressed(KeyCode::ShiftRight);
+
+    if !(input.just_pressed(KeyCode::KeyC) && shift_held) {
+        return;
+    }
+
+    let next_state = match snapshot_type.get() {
+        SnapshotType::Occupancy => SnapshotType::SignedDistance,
+        SnapshotType::SignedDistance => SnapshotType::AbsoluteDistance,
+        SnapshotType::AbsoluteDistance => SnapshotType::MaximumSurfaceProjection,
+        SnapshotType::MaximumSurfaceProjection => SnapshotType::Occupancy,
+    };
+
+    info!("Switched snapshot type to {}", next_state);
+    next_snapshot_type.set(next_state);
+}
+
 pub fn snapshotter(
     input: Res<ButtonInput<KeyCode>>,
-    snapshot_type: Res<SnapshotType>,
+    snapshot_type: Res<State<SnapshotType>>,
     voxel_query: Query<(Entity, &VoxelizationData), ()>,
     images: Res<Assets<Image>>,
 ) {
-    if !input.just_pressed(KeyCode::KeyC) {
+    if !input.just_pressed(KeyCode::KeyC)
+        || input
+            .get_pressed()
+            .fold(false, |accum, key| is_modifier(*key) || accum)
+    {
         return;
     }
+
+    info!(
+        "Processing snapshots for {} items.",
+        voxel_query.iter().count()
+    );
 
     for (entity, voxel_data) in voxel_query.iter() {
         if voxel_data.state != VoxelizationState::Computed {
@@ -63,16 +108,16 @@ pub fn snapshotter(
 
         let voxels: &[f32] = bytemuck::cast_slice(raw_data);
 
-        let SliceStack(slices) = match *snapshot_type {
+        let SliceStack(slices) = match snapshot_type.get() {
             SnapshotType::Occupancy => occupancy_visualization(voxels),
             SnapshotType::SignedDistance => signed_distance_visualization(voxels),
             SnapshotType::AbsoluteDistance => absolute_distance_visualization(voxels),
-            SnapshotType::MaximumIntensity => mip_visualization(voxels),
+            SnapshotType::MaximumSurfaceProjection => max_surface_projection(voxels),
         };
 
         let temp_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(TEMP_DIR);
         for (i, slice) in slices.iter().enumerate() {
-            let slice_path = temp_path.join(format!("{entity}_{}_{i:03}.png", *snapshot_type));
+            let slice_path = temp_path.join(format!("{entity}_{}_{i:03}.png", snapshot_type.get()));
             _ = slice.save(slice_path).map_err(|e| {
                 error!(
                     "Failed to save snapshot for entity {:?} slice {}: {}",
@@ -98,8 +143,6 @@ fn signed_distance_visualization(voxels: &[f32]) -> SliceStack {
         let mut img = RgbImage::new(SIZE, SIZE);
 
         for z in 0..SIZE {
-            let z_img = SIZE - z - 1;
-
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = voxels[index];
@@ -116,7 +159,9 @@ fn signed_distance_visualization(voxels: &[f32]) -> SliceStack {
                     (0, 255, 0) // near surface
                 };
 
-                img.put_pixel(x, z_img, Rgb([r, g, b]));
+                let img_x = z;
+                let img_y = SIZE - x - 1;
+                img.put_pixel(img_x, img_y, Rgb([r, g, b]));
             }
         }
         slices.insert(y as usize, img.into());
@@ -145,8 +190,6 @@ fn absolute_distance_visualization(voxels: &[f32]) -> SliceStack {
         let mut img = GrayImage::new(SIZE, SIZE);
 
         for z in 0..SIZE {
-            let z_img = SIZE - z - 1;
-
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = unsigned_voxels[index];
@@ -155,7 +198,9 @@ fn absolute_distance_visualization(voxels: &[f32]) -> SliceStack {
                 let normalized = ((value - min_val) / (max_val - min_val)).clamp(0.0, 1.0);
                 let pixel_value = (normalized * 255.0) as u8;
 
-                img.put_pixel(x, z_img, Luma([pixel_value]));
+                let img_x = z;
+                let img_y = SIZE - x - 1;
+                img.put_pixel(img_x, img_y, Luma([pixel_value]));
             }
         }
         slices.insert(y as usize, img.into());
@@ -176,8 +221,6 @@ fn occupancy_visualization(voxels: &[f32]) -> SliceStack {
         let mut img = GrayImage::new(SIZE, SIZE);
 
         for z in 0..SIZE {
-            let z_img = SIZE - z - 1;
-
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = voxels[index];
@@ -186,7 +229,9 @@ fn occupancy_visualization(voxels: &[f32]) -> SliceStack {
                 let normalized = if value < 0.0 { 0.0 } else { 1.0 };
                 let pixel_value = (normalized * 255.0) as u8;
 
-                img.put_pixel(x, z_img, Luma([pixel_value]));
+                let img_x = z;
+                let img_y = SIZE - x - 1;
+                img.put_pixel(img_x, img_y, Luma([pixel_value]));
             }
         }
         slices.insert(y as usize, img.into());
@@ -195,24 +240,31 @@ fn occupancy_visualization(voxels: &[f32]) -> SliceStack {
     SliceStack(slices)
 }
 
-fn mip_visualization(voxels: &[f32]) -> SliceStack {
+fn max_surface_projection(voxels: &[f32]) -> SliceStack {
     let mut img = GrayImage::new(SIZE, SIZE);
 
     for z in 0..SIZE {
-        let img_z = SIZE - z - 1;
-
         for x in 0..SIZE {
-            let mut max_val = 0.0f32;
+            let mut max_density = 0.0f32;
 
-            // project along Z axis
             for y in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
-                max_val = max_val.max(voxels[index].abs());
+                let d = voxels[index].abs();
+
+                // surface-enhanced density
+                let density = 1.0 / (d + 1e-3);
+
+                max_density = max_density.max(density);
             }
 
-            let pixel_value = (max_val.clamp(0.0, 1.0) * 255.0) as u8;
-            img.put_pixel(x, img_z, Luma([pixel_value]));
+            let pixel_value = ((max_density / (max_density + 10.0)) * 255.0) as u8;
+
+            let img_x = z;
+            let img_y = SIZE - 1 - x;
+
+            img.put_pixel(img_x, img_y, Luma([pixel_value]));
         }
     }
+
     SliceStack(vec![img.into()])
 }

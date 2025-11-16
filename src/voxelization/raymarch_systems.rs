@@ -53,7 +53,12 @@ pub(super) fn spawn_raymarch_render_targets(
         let sdf_handle = voxel_info.signed_distance_field.clone();
 
         let scale_factor = 1.0f32;
-        let mat = Mat4::from_scale(Vec3::splat(scale_factor));
+        //let mat = Mat4::from_scale(Vec3::splat(scale_factor));
+        let mat = Mat4::from_scale_rotation_translation(
+            Vec3::splat(scale_factor),
+            Quat::IDENTITY,
+            Vec3::new(0.0, 0.0, 6.0),
+        );
         // Spawn a separate render target entity
         commands.spawn((
             RaymarchRenderTarget {

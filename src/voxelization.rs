@@ -30,8 +30,11 @@ impl Plugin for VoxelizationPlugin {
                 .chain(),
         );
 
-        app.insert_resource(SnapshotType::SignedDistance);
-        app.add_systems(Update, snapshot::snapshotter);
+        app.init_state::<SnapshotType>();
+        app.add_systems(
+            Update,
+            (snapshot::snapshotter, snapshot::cycle_snapshot_type),
+        );
     }
 }
 
