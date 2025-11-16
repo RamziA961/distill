@@ -4,12 +4,13 @@ use bevy_app_compute::prelude::{
     AppComputeWorker, AppComputeWorkerBuilder, ComputeShader, ComputeWorker, ShaderRef, ShaderType,
 };
 use bytemuck::{Pod, Zeroable};
-use strum::{AsRefStr, EnumString};
 
-pub const SIZE: u32 = 64;
+use crate::gpu_types::{GpuBvhNode, GpuTriangle};
+
+pub const SIZE: u32 = 128;
 const WORKGROUP_SIZE: u32 = 8;
 
-#[derive(Debug, EnumString, AsRefStr)]
+#[derive(Debug, strum::EnumString, strum::Display, strum::AsRefStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum VoxelVariables {
     VoxelTexture,
@@ -46,10 +47,16 @@ impl ComputeWorker for VoxelizationWorker {
         AppComputeWorkerBuilder::new(world)
             .add_empty_staging(
                 VoxelVariables::VoxelTexture.as_ref(),
-                (SIZE * SIZE * SIZE * 4) as u64,
+                (SIZE as u64).pow(3) * 4,
             )
-            .add_empty_rw_storage(VoxelVariables::Triangles.as_ref(), 8192 * 96)
-            .add_empty_rw_storage(VoxelVariables::BvhNodes.as_ref(), 8192 * 32)
+            .add_empty_rw_storage(
+                VoxelVariables::Triangles.as_ref(),
+                8192 * std::mem::size_of::<GpuTriangle>() as u64,
+            )
+            .add_empty_rw_storage(
+                VoxelVariables::BvhNodes.as_ref(),
+                8192 * std::mem::size_of::<GpuBvhNode>() as u64,
+            )
             .add_uniform(VoxelVariables::VoxelUniforms.as_ref(), &voxel_uniforms)
             .add_pass::<VoxelizationShader>(
                 workgroups,

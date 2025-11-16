@@ -1,29 +1,80 @@
+use crate::{
+    utils::input_utils::is_modifier,
+    voxelization::{VoxelizationData, VoxelizationState, voxelization_worker::SIZE},
+};
+use bevy::prelude::*;
+use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
 use std::path::Path;
 
-use bevy::prelude::*;
-use image::{GrayImage, Luma, Rgb, RgbImage};
+const TEMP_DIR: &str = "temp";
 
-use crate::voxelization::{VoxelizationData, VoxelizationState, voxelization_worker::SIZE};
-
-#[derive(Resource, Clone, Debug, Default)]
+#[derive(
+    States,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    strum::EnumString,
+    strum::AsRefStr,
+    strum::Display,
+)]
 #[allow(dead_code)]
 pub enum SnapshotType {
     #[default]
+    #[strum(serialize = "occ")]
     Occupancy,
+    #[strum(serialize = "sd")]
     SignedDistance,
+    #[strum(serialize = "ad")]
     AbsoluteDistance,
-    MaximumIntensity,
+    #[strum(serialize = "msp")]
+    MaximumSurfaceProjection,
+}
+
+struct SliceStack(Vec<DynamicImage>);
+
+pub fn cycle_snapshot_type(
+    input: Res<ButtonInput<KeyCode>>,
+    snapshot_type: Res<State<SnapshotType>>,
+    mut next_snapshot_type: ResMut<NextState<SnapshotType>>,
+) {
+    let shift_held = input.pressed(KeyCode::ShiftLeft) || input.pressed(KeyCode::ShiftRight);
+
+    if !(input.just_pressed(KeyCode::KeyC) && shift_held) {
+        return;
+    }
+
+    let next_state = match snapshot_type.get() {
+        SnapshotType::Occupancy => SnapshotType::SignedDistance,
+        SnapshotType::SignedDistance => SnapshotType::AbsoluteDistance,
+        SnapshotType::AbsoluteDistance => SnapshotType::MaximumSurfaceProjection,
+        SnapshotType::MaximumSurfaceProjection => SnapshotType::Occupancy,
+    };
+
+    info!("Switched snapshot type to {}", next_state);
+    next_snapshot_type.set(next_state);
 }
 
 pub fn snapshotter(
     input: Res<ButtonInput<KeyCode>>,
-    snapshot_type: Res<SnapshotType>,
+    snapshot_type: Res<State<SnapshotType>>,
     voxel_query: Query<(Entity, &VoxelizationData), ()>,
     images: Res<Assets<Image>>,
 ) {
-    if !input.just_pressed(KeyCode::KeyC) {
+    if !input.just_pressed(KeyCode::KeyC)
+        || input
+            .get_pressed()
+            .fold(false, |accum, key| is_modifier(*key) || accum)
+    {
         return;
     }
+
+    info!(
+        "Processing snapshots for {} items.",
+        voxel_query.iter().count()
+    );
 
     for (entity, voxel_data) in voxel_query.iter() {
         if voxel_data.state != VoxelizationState::Computed {
@@ -51,37 +102,47 @@ pub fn snapshotter(
         };
 
         let Some(raw_data) = &image.data else {
-            error!(
-                "Image for entity {:?} has no CPU-accessible data (likely GPU-only).",
-                entity
-            );
+            error!("Image for entity {:?} has no CPU-accessible data.", entity);
             continue;
         };
 
         let voxels: &[f32] = bytemuck::cast_slice(raw_data);
 
-        match snapshot_type.as_ref() {
-            SnapshotType::Occupancy => occupancy_visualization(&entity, voxels),
-            SnapshotType::SignedDistance => signed_distance_visualization(&entity, voxels),
-            SnapshotType::AbsoluteDistance => absolute_distance_visualization(&entity, voxels),
-            SnapshotType::MaximumIntensity => mip_visualization(&entity, voxels),
+        let SliceStack(slices) = match snapshot_type.get() {
+            SnapshotType::Occupancy => occupancy_visualization(voxels),
+            SnapshotType::SignedDistance => signed_distance_visualization(voxels),
+            SnapshotType::AbsoluteDistance => absolute_distance_visualization(voxels),
+            SnapshotType::MaximumSurfaceProjection => max_surface_projection(voxels),
+        };
+
+        let temp_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(TEMP_DIR);
+        for (i, slice) in slices.iter().enumerate() {
+            let slice_path = temp_path.join(format!("{entity}_{}_{i:03}.png", snapshot_type.get()));
+            _ = slice.save(slice_path).map_err(|e| {
+                error!(
+                    "Failed to save snapshot for entity {:?} slice {}: {}",
+                    entity, i, e
+                )
+            });
         }
 
         info!("Snapshot(s) for entity {:?} completed.", entity);
     }
 }
 
-fn signed_distance_visualization(entity: &Entity, voxels: &[f32]) {
+fn signed_distance_visualization(voxels: &[f32]) -> SliceStack {
     // Find min/max for normalization
     let min_val = voxels.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_val = voxels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let abs_max = min_val.abs().max(max_val.abs());
     info!(min = min_val, max = max_val, abs_max = abs_max);
 
-    for z in 0..SIZE {
+    let mut slices = Vec::with_capacity(SIZE as usize);
+
+    for y in 0..SIZE {
         let mut img = RgbImage::new(SIZE, SIZE);
 
-        for y in 0..SIZE {
+        for z in 0..SIZE {
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = voxels[index];
@@ -98,17 +159,18 @@ fn signed_distance_visualization(entity: &Entity, voxels: &[f32]) {
                     (0, 255, 0) // near surface
                 };
 
-                img.put_pixel(x, y, Rgb([r, g, b]));
+                let img_x = z;
+                let img_y = SIZE - x - 1;
+                img.put_pixel(img_x, img_y, Rgb([r, g, b]));
             }
         }
-        // Save slice as PNG
-        let filename = format!("temp/{entity}_{z:03}.png");
-        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
-        img.save(p).expect("Failed to save voxel slice image");
+        slices.insert(y as usize, img.into());
     }
+
+    SliceStack(slices)
 }
 
-fn absolute_distance_visualization(entity: &Entity, voxels: &[f32]) {
+fn absolute_distance_visualization(voxels: &[f32]) -> SliceStack {
     let unsigned_voxels = voxels.iter().map(|f| f.abs()).collect::<Vec<_>>();
 
     // Find min/max for normalization
@@ -122,10 +184,12 @@ fn absolute_distance_visualization(entity: &Entity, voxels: &[f32]) {
         .fold(f32::NEG_INFINITY, f32::max);
     info!(min = min_val, max = max_val);
 
-    for z in 0..SIZE {
+    let mut slices = Vec::with_capacity(SIZE as usize);
+
+    for y in 0..SIZE {
         let mut img = GrayImage::new(SIZE, SIZE);
 
-        for y in 0..SIZE {
+        for z in 0..SIZE {
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = unsigned_voxels[index];
@@ -134,26 +198,29 @@ fn absolute_distance_visualization(entity: &Entity, voxels: &[f32]) {
                 let normalized = ((value - min_val) / (max_val - min_val)).clamp(0.0, 1.0);
                 let pixel_value = (normalized * 255.0) as u8;
 
-                img.put_pixel(x, y, Luma([pixel_value]));
+                let img_x = z;
+                let img_y = SIZE - x - 1;
+                img.put_pixel(img_x, img_y, Luma([pixel_value]));
             }
         }
-        // Save slice as PNG
-        let filename = format!("temp/{entity}_{z:03}.png");
-        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
-        img.save(p).expect("Failed to save voxel slice image");
+        slices.insert(y as usize, img.into());
     }
+
+    SliceStack(slices)
 }
 
-fn occupancy_visualization(entity: &Entity, voxels: &[f32]) {
+fn occupancy_visualization(voxels: &[f32]) -> SliceStack {
     // Find min/max for normalization
     let min_val = voxels.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_val = voxels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     info!(min = min_val, max = max_val);
 
-    for z in 0..SIZE {
+    let mut slices = Vec::with_capacity(SIZE as usize);
+
+    for y in 0..SIZE {
         let mut img = GrayImage::new(SIZE, SIZE);
 
-        for y in 0..SIZE {
+        for z in 0..SIZE {
             for x in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
                 let value = voxels[index];
@@ -162,31 +229,42 @@ fn occupancy_visualization(entity: &Entity, voxels: &[f32]) {
                 let normalized = if value < 0.0 { 0.0 } else { 1.0 };
                 let pixel_value = (normalized * 255.0) as u8;
 
-                img.put_pixel(x, y, Luma([pixel_value]));
+                let img_x = z;
+                let img_y = SIZE - x - 1;
+                img.put_pixel(img_x, img_y, Luma([pixel_value]));
             }
         }
-        // Save slice as PNG
-        let filename = format!("temp/{entity}_{z:03}.png");
-        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
-        img.save(p).expect("Failed to save voxel slice image");
+        slices.insert(y as usize, img.into());
     }
+
+    SliceStack(slices)
 }
 
-fn mip_visualization(entity: &Entity, voxels: &[f32]) {
+fn max_surface_projection(voxels: &[f32]) -> SliceStack {
     let mut img = GrayImage::new(SIZE, SIZE);
 
-    for y in 0..SIZE {
+    for z in 0..SIZE {
         for x in 0..SIZE {
-            let mut max_val: f64 = 0.0;
-            for z in 0..SIZE {
+            let mut max_density = 0.0f32;
+
+            for y in 0..SIZE {
                 let index = (x + y * SIZE + z * SIZE * SIZE) as usize;
-                max_val = max_val.max(voxels[index].abs() as f64);
+                let d = voxels[index].abs();
+
+                // surface-enhanced density
+                let density = 1.0 / (d + 1e-3);
+
+                max_density = max_density.max(density);
             }
-            let pixel_value = ((max_val / 1.0).clamp(0.0, 1.0) * 255.0) as u8;
-            img.put_pixel(x, y, Luma([pixel_value]));
+
+            let pixel_value = ((max_density / (max_density + 10.0)) * 255.0) as u8;
+
+            let img_x = z;
+            let img_y = SIZE - 1 - x;
+
+            img.put_pixel(img_x, img_y, Luma([pixel_value]));
         }
     }
-    let filename = format!("temp/{entity}_mip.png");
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
-    img.save(p).expect("Failed to save MIP image");
+
+    SliceStack(vec![img.into()])
 }

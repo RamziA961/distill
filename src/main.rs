@@ -5,12 +5,13 @@ use crate::{
     },
     voxelization::{VoxelizationPlugin, VoxelizeTargetMarker},
 };
-use bevy::prelude::*;
+use bevy::{pbr::wireframe::Wireframe, prelude::*};
 use bevy_obj::ObjPlugin;
 
 pub(crate) mod bvh;
 mod camera;
 pub(crate) mod gpu_types;
+pub(crate) mod utils;
 pub(crate) mod voxelization;
 mod window;
 
@@ -34,7 +35,9 @@ fn main() {
             global: false,
             default_color: Color::BLACK,
         });
+
         app.add_systems(Startup, debug_tools);
+        app.add_systems(Update, debug_gyzmos);
     }
 
     app.add_plugins(CameraPlugin::<CameraMarkerPrimary> {
@@ -48,7 +51,7 @@ fn main() {
     app.add_systems(Startup, (window::grab_cursor, window::hide_cursor));
     app.add_systems(Update, window::toggle_cursor);
 
-    app.add_systems(Startup, spawn_target_mesh_obj);
+    app.add_systems(PostStartup, spawn_target_mesh_obj);
 
     app.run();
 }
@@ -69,6 +72,10 @@ fn light_system(mut commands: Commands) {
 fn debug_tools(mut commands: Commands) {
     use iyes_perf_ui::prelude::PerfUiDefaultEntries;
     commands.spawn(PerfUiDefaultEntries::default());
+}
+
+fn debug_gyzmos(mut gizmos: Gizmos) {
+    gizmos.axes(Transform::IDENTITY, 3.0);
 }
 
 fn spawn_target_mesh(
@@ -100,16 +107,21 @@ fn spawn_target_mesh_obj(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    let mesh_handle = asset_server.load::<Mesh>("models/bunny.obj");
+    let mesh_handle = asset_server.load::<Mesh>("models/cow.obj");
 
     commands.spawn((
         VoxelizeTargetMarker,
         BvhTargetMarker,
+        Wireframe,
         Mesh3d(mesh_handle),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::linear_rgba(1.0, 0.0, 0.0, 1.0),
             ..default()
         })),
-        Transform::from_xyz(-3.0, 0.0, 0.0),
+        Transform::from_matrix(Mat4::from_scale_rotation_translation(
+            Vec3::splat(1.0),
+            Quat::IDENTITY,
+            Vec3::new(0.0, 0.0, -3.0),
+        )),
     ));
 }
