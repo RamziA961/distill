@@ -3,7 +3,7 @@ use crate::{
     camera::{
         configuration::CameraConfiguration, marker::CameraMarkerPrimary, plugin::CameraPlugin,
     },
-    voxelization::{VoxelizationPlugin, VoxelizeTargetMarker},
+    voxelizer::{VoxelizationPlugin, VoxelizeTargetMarker},
 };
 use bevy::{pbr::wireframe::Wireframe, prelude::*};
 use bevy_obj::ObjPlugin;
@@ -12,7 +12,7 @@ pub(crate) mod bvh;
 mod camera;
 pub(crate) mod gpu_types;
 pub(crate) mod utils;
-pub(crate) mod voxelization;
+pub(crate) mod voxelizer;
 mod window;
 
 fn main() {

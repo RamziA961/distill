@@ -7,13 +7,11 @@ use bevy::{
 use bevy_app_compute::prelude::AppComputeWorker;
 use tracing::instrument;
 
-use crate::{
-    bvh::BvhData,
-    voxelization::{
-        SignedDistanceFieldData, VoxelizationData, VoxelizationState, VoxelizeTargetMarker,
-        voxelization_worker::{SIZE, VoxelVariables, VoxelizationWorker},
-    },
+use super::{
+    SIZE, SignedDistanceFieldData, VoxelizationData, VoxelizationState, VoxelizeTargetMarker,
+    voxelizer_worker::{VoxelVariables, VoxelizationWorker},
 };
+use crate::bvh::BvhData;
 
 #[allow(clippy::type_complexity)]
 #[instrument(skip_all)]

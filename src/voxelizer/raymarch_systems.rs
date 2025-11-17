@@ -1,15 +1,16 @@
 use crate::{
     camera::marker::CameraMarkerPrimary,
     gpu_types::{GpuBox3, GpuCamera},
-    voxelization::{
-        VoxelizationData, VoxelizationState, VoxelizeTargetMarker, raymarch::RaymarchRenderTarget,
-        raymarch_material::RaymarchMaterialExtension, voxelization_worker::SIZE,
-    },
 };
 use bevy::{
     camera::primitives::MeshAabb,
     pbr::{ExtendedMaterial, wireframe::Wireframe},
     prelude::*,
+};
+
+use super::{
+    SIZE, VoxelizationData, VoxelizationState, VoxelizeTargetMarker,
+    raymarch::RaymarchRenderTarget, raymarch_material::RaymarchMaterialExtension,
 };
 
 pub(super) fn spawn_raymarch_render_targets(

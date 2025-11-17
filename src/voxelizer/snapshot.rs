@@ -1,7 +1,5 @@
-use crate::{
-    utils::input_utils::is_modifier,
-    voxelization::{VoxelizationData, VoxelizationState, voxelization_worker::SIZE},
-};
+use super::{SIZE, VoxelizationData, VoxelizationState};
+use crate::utils::input_utils::is_modifier;
 use bevy::prelude::*;
 use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
 use std::path::Path;

@@ -5,9 +5,9 @@ use bevy_app_compute::prelude::{
 };
 use bytemuck::{Pod, Zeroable};
 
+use super::SIZE;
 use crate::gpu_types::{GpuBvhNode, GpuTriangle};
 
-pub const SIZE: u32 = 128;
 const WORKGROUP_SIZE: u32 = 8;
 
 #[derive(Debug, strum::EnumString, strum::Display, strum::AsRefStr)]
