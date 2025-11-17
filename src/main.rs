@@ -3,6 +3,7 @@ use crate::{
     camera::{
         configuration::CameraConfiguration, marker::CameraMarkerPrimary, plugin::CameraPlugin,
     },
+    slicer::{SlicerPlugin, slicer_volume::SlicerVolumeData},
     voxelizer::{VoxelizationPlugin, VoxelizeTargetMarker},
 };
 use bevy::{pbr::wireframe::Wireframe, prelude::*};
@@ -11,6 +12,7 @@ use bevy_obj::ObjPlugin;
 pub(crate) mod bvh;
 mod camera;
 pub(crate) mod gpu_types;
+pub(crate) mod slicer;
 pub(crate) mod utils;
 pub(crate) mod voxelizer;
 mod window;
@@ -40,10 +42,11 @@ fn main() {
     app.add_plugins(CameraPlugin::<CameraMarkerPrimary> {
         configuration: CameraConfiguration::<CameraMarkerPrimary>::default(),
     });
-    app.add_plugins((BvhPlugin, VoxelizationPlugin));
+
+    app.init_resource::<SlicerVolumeData>();
+    app.add_plugins((BvhPlugin, VoxelizationPlugin, SlicerPlugin));
 
     app.add_systems(Startup, (camera_system, light_system));
-
     // window and cursor controls
     app.add_systems(Startup, (window::grab_cursor, window::hide_cursor));
     app.add_systems(Update, window::toggle_cursor);
