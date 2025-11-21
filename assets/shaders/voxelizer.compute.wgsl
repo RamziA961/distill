@@ -116,7 +116,7 @@ fn closest_point_bvh(p_local: vec3<f32>) -> ClosestResult {
 /// Uses the same BVH structure for efficient ray intersection testing.
 fn is_inside(p: vec3<f32>) -> bool {
     var count: u32 = 0u; // number of ray-triangle intersections
-    let ray_dir = vec3<f32>(1.0, 0.5, 0.3); // ray direction along +X
+    let ray_dir = vec3<f32>(1.0, 0.5, 0.3);
 
     var stack: array<u32, STACK_SIZE>;
     var stack_ptr = 1u;

@@ -27,6 +27,10 @@ impl GpuBvhNode {
         }
     }
 
+    pub fn aabb(&self) -> GpuBox3 {
+        self.aabb
+    }
+
     pub fn with_left_index(&mut self, left_index: u32) {
         self.left_index = left_index;
     }

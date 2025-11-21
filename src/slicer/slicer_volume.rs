@@ -6,7 +6,7 @@ use bevy::{
 #[derive(Debug, Clone, Resource)]
 pub struct SlicerVolumeData {
     pub volume_bounds: Aabb3d,
-    pub slice_height: f32,
+    pub volume_resolution: Vec3,
 }
 
 const DEFAULT_VOLUME: Vec3 = Vec3::splat(10.0);
@@ -16,7 +16,7 @@ impl Default for SlicerVolumeData {
         let half_size = DEFAULT_VOLUME / 2.0;
         Self {
             volume_bounds: Aabb3d::new(half_size, half_size),
-            slice_height: 0.05,
+            volume_resolution: Vec3::splat(0.05),
         }
     }
 }

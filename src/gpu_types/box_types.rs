@@ -53,6 +53,15 @@ impl From<Aabb3d> for GpuBox3 {
     }
 }
 
+impl From<GpuBox3> for Aabb3d {
+    fn from(value: GpuBox3) -> Self {
+        Self {
+            min: value.min.into(),
+            max: value.max.into(),
+        }
+    }
+}
+
 impl From<Aabb> for GpuBox3 {
     fn from(value: Aabb) -> Self {
         Self {

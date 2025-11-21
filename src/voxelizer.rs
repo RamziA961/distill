@@ -1,11 +1,13 @@
 use bevy::{pbr::ExtendedMaterial, prelude::*};
 use bevy_app_compute::prelude as compute;
 use raymarch_material::RaymarchMaterialExtension;
+use signed_distance_field_data::SignedDistanceFieldData;
 use snapshot::SnapshotType;
 
 mod raymarch;
 pub mod raymarch_material;
 mod raymarch_systems;
+pub mod signed_distance_field_data;
 mod snapshot;
 mod voxelizer_systems;
 pub mod voxelizer_worker;
@@ -51,13 +53,8 @@ pub enum VoxelizationState {
     Computed,
 }
 
-#[derive(Debug, Clone)]
-pub struct SignedDistanceFieldData {
-    pub signed_distance_field: Handle<Image>,
-}
-
 #[derive(Debug, Clone, Component)]
 pub struct VoxelizationData {
-    state: VoxelizationState,
-    data: Option<SignedDistanceFieldData>,
+    pub state: VoxelizationState,
+    pub data: Option<SignedDistanceFieldData>,
 }

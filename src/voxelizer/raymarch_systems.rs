@@ -1,4 +1,5 @@
 use crate::{
+    bvh::BvhData,
     camera::marker::CameraMarkerPrimary,
     gpu_types::{GpuBox3, GpuCamera},
 };
@@ -17,9 +18,11 @@ pub(super) fn spawn_raymarch_render_targets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>>,
-    voxel_query: Query<(Entity, &Mesh3d, &VoxelizationData), With<VoxelizeTargetMarker>>,
+    mut voxel_query: Query<
+        (Entity, &Mesh3d, &mut VoxelizationData, &mut BvhData),
+        With<VoxelizeTargetMarker>,
+    >,
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
-    existing_targets: Query<&RaymarchRenderTarget>,
 ) {
     if voxel_query.is_empty() {
         return;
@@ -28,19 +31,20 @@ pub(super) fn spawn_raymarch_render_targets(
     let (camera_transform, projection) = camera_params.into_inner();
     let camera = GpuCamera::from_transform_and_projection(camera_transform, projection);
 
-    for (entity, mesh_handle, voxel_data) in voxel_query.iter() {
+    for (entity, mesh_handle, mut voxel_data, mut bvh_data) in voxel_query.iter_mut() {
         // Only spawn for meshes that have finished voxelization
         if voxel_data.state != VoxelizationState::Computed {
             continue;
         }
 
         // Skip if we already spawned a render target for this mesh
-        if existing_targets.iter().any(|t| t.source_entity == entity) {
-            continue;
-        }
+        //if existing_targets.iter().any(|t| t.source_entity == entity) {
+        //    continue;
+        //}
 
         let mesh = meshes.get(mesh_handle).unwrap();
         let mesh_bounds = mesh.compute_aabb().map(GpuBox3::from).unwrap();
+
         let grid_size = SIZE;
 
         let Some(voxel_info) = &voxel_data.data else {
@@ -54,17 +58,14 @@ pub(super) fn spawn_raymarch_render_targets(
         let sdf_handle = voxel_info.signed_distance_field.clone();
 
         let scale_factor = 1.0f32;
-        //let mat = Mat4::from_scale(Vec3::splat(scale_factor));
         let mat = Mat4::from_scale_rotation_translation(
             Vec3::splat(scale_factor),
             Quat::IDENTITY,
-            Vec3::new(0.0, 0.0, 6.0),
+            Vec3::new(5.0, 5.0, 5.0),
         );
+
         // Spawn a separate render target entity
         commands.spawn((
-            RaymarchRenderTarget {
-                source_entity: entity,
-            },
             Mesh3d(meshes.add(Cuboid::from_corners(
                 Vec3::from(*mesh_bounds.min()),
                 Vec3::from(*mesh_bounds.max()),
@@ -86,7 +87,19 @@ pub(super) fn spawn_raymarch_render_targets(
             })),
             Transform::from_matrix(mat),
             Wireframe,
+            RaymarchRenderTarget,
+            VoxelizationData {
+                state: VoxelizationState::Computed,
+                data: voxel_data.data.take(),
+            },
+            BvhData {
+                nodes: std::mem::take(bvh_data.nodes.as_mut()),
+                triangles: std::mem::take(bvh_data.triangles.as_mut()),
+            },
         ));
+
+        // Despawn original mesh
+        commands.entity(entity).despawn();
     }
 }
 
@@ -98,7 +111,6 @@ pub(super) fn update_raymarch_materials(
         &MeshMaterial3d<ExtendedMaterial<StandardMaterial, RaymarchMaterialExtension>>,
         &Transform,
     )>,
-    _voxel_sources: Query<&VoxelizationData, With<VoxelizeTargetMarker>>,
     camera_params: Single<(&Transform, &Projection), With<CameraMarkerPrimary>>,
 ) {
     let (camera_transform, projection) = camera_params.into_inner();
